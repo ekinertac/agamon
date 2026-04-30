@@ -80,7 +80,8 @@ final class AppState {
     var selectedProjectID: UUID?
     var selectedTabID: UUID?
     var focusedPaneID: UUID?
-    var selectedFile: URL? = nil
+    var openFiles: [URL] = []        // ordered list of open editor tabs
+    var selectedFile: URL? = nil     // currently active editor file
     var editorPanelVisible: Bool = false
     var filePanelVisible: Bool = true
     var filePanelFocused: Bool = false
@@ -252,6 +253,11 @@ final class AppState {
         selectProject(projects[index].id)
     }
 
+    func selectEditorTab(at index: Int) {
+        guard editorPanelVisible, index < openFiles.count else { return }
+        openFile(openFiles[index])
+    }
+
     // MARK: - Pane Close
 
     // Removes the focused pane from the split tree. If it's the only pane, closes the tab.
@@ -296,8 +302,24 @@ final class AppState {
     // MARK: - Editor Panel
 
     func openFile(_ url: URL) {
+        if !openFiles.contains(url) {
+            openFiles.append(url)
+        }
         selectedFile = url
         editorPanelVisible = true
+    }
+
+    func closeFile(_ url: URL) {
+        guard let idx = openFiles.firstIndex(of: url) else { return }
+        openFiles.remove(at: idx)
+        if selectedFile == url {
+            if openFiles.isEmpty {
+                selectedFile = nil
+                editorPanelVisible = false
+            } else {
+                selectedFile = openFiles[min(idx, openFiles.count - 1)]
+            }
+        }
     }
 
     func closeEditor() {
@@ -412,6 +434,35 @@ final class AppState {
                 }
                 view = v.superview
             }
+            return event
+        }
+
+        // Context-sensitive shortcuts: Cmd+1...9 and Cmd+Opt+Left behave differently
+        // depending on whether the editor or a terminal is the first responder.
+        // AgamonEditorTextView is our marker subclass — checking its type here avoids
+        // false positives from sheet text fields or other NSTextView instances in the UI.
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            guard NSApp.keyWindow?.firstResponder is AgamonEditorTextView else { return event }
+
+            let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
+
+            // Cmd+1…9 while editor focused → select editor tab, consume event.
+            // Without consume, the event would fall through to ShortcutHandler's terminal tab handler.
+            if mods == .command,
+               let char = event.characters, char.count == 1,
+               let n = Int(char), (1...9).contains(n) {
+                self.selectEditorTab(at: n - 1)
+                return nil
+            }
+
+            // Cmd+Opt+Left while editor focused → return focus to the active terminal.
+            // keyCode 123 = left arrow. Without consume, pane navigation would fire instead.
+            if mods == [.command, .option], event.keyCode == 123 {
+                self.refocusActiveTerminal()
+                return nil
+            }
+
             return event
         }
 
