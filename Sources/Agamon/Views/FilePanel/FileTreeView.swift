@@ -137,7 +137,8 @@ struct FileTreeView: View {
     private func toggleExpanded(_ item: FileItem) {
         guard item.isDirectory else { return }
         if expandedPaths.contains(item.url) {
-            expandedPaths.remove(item.url)
+            // Remove this dir and all descendants so re-expanding starts fresh.
+            expandedPaths = expandedPaths.filter { !$0.path.hasPrefix(item.url.path + "/") && $0 != item.url }
         } else {
             if childrenCache[item.url] == nil {
                 childrenCache[item.url] = FileItem.children(of: item.url, depth: item.depth + 1)
