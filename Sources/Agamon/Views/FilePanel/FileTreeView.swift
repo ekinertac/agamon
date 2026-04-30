@@ -1,21 +1,19 @@
 // Hierarchical file browser for the active project's root directory.
-// Directories expand inline (no separate navigation level) for quick access to nested files.
-// Skips hidden files by default — agents rarely need to browse .git or node_modules.
-//
-// Keyboard navigation: when keyboardFocused is true (driven by FilePanelView / ⌘E),
-// ↑/↓ moves through root items, Enter opens a file or toggles a directory,
-// Escape releases focus back to the terminal.
-//
+// Single-click highlights; double-click calls appState.openFile() which sets selectedFile
+// and makes the editor panel (column 3) visible.
+// Keyboard navigation: ↑/↓ moves through root items, Enter opens, Escape releases focus.
+// Hidden files and build artifacts (node_modules, .build, .git, DerivedData) are skipped.
 // Related: FilePanelView.swift (hosts this, owns keyboardFocused state),
-//          FileEditorView.swift (opens files selected here).
+//          EditorPanelView.swift (displays the file opened here),
+//          AppState.swift (selectedFile, openFile).
 
 import SwiftUI
 
 struct FileTreeView: View {
     let rootPath: String
-    @Binding var selectedFile: URL?
     @Binding var keyboardFocused: Bool
 
+    @Environment(AppState.self) private var appState
     @State private var rootItems: [FileItem] = []
     @State private var keyboardIndex: Int = 0
     @State private var highlightedFile: URL?
@@ -27,7 +25,6 @@ struct FileTreeView: View {
                 ForEach(Array(rootItems.enumerated()), id: \.element.id) { idx, item in
                     FileTreeRow(
                         item: item,
-                        selectedFile: $selectedFile,
                         highlightedFile: $highlightedFile,
                         isKeyboardSelected: internalFocus && idx == keyboardIndex
                     )
@@ -48,21 +45,16 @@ struct FileTreeView: View {
         .onKeyPress(.return) {
             guard !rootItems.isEmpty else { return .ignored }
             let item = rootItems[keyboardIndex]
-            if !item.isDirectory { selectedFile = item.url }
+            if !item.isDirectory { appState.openFile(item.url) }
             return .handled
         }
         .onKeyPress(.escape) {
             internalFocus = false
             return .handled
         }
-        // Sync parent-driven focus flag → internal @FocusState
         .onChange(of: keyboardFocused) { _, new in
-            if new {
-                internalFocus = true
-                keyboardIndex = 0
-            }
+            if new { internalFocus = true; keyboardIndex = 0 }
         }
-        // Sync internal focus loss → parent flag
         .onChange(of: internalFocus) { _, new in
             if !new { keyboardFocused = false }
         }
@@ -80,16 +72,16 @@ struct FileTreeView: View {
 
 struct FileTreeRow: View {
     let item: FileItem
-    @Binding var selectedFile: URL?
     @Binding var highlightedFile: URL?
     var isKeyboardSelected: Bool = false
 
+    @Environment(AppState.self) private var appState
     @State private var isExpanded = false
     @State private var isHovered = false
     @State private var children: [FileItem] = []
     @State private var lastTapTime: Date = .distantPast
 
-    private var isOpen: Bool       { selectedFile == item.url }
+    private var isOpen: Bool       { appState.selectedFile == item.url }
     private var isHighlighted: Bool { highlightedFile == item.url || isOpen }
 
     var body: some View {
@@ -97,7 +89,7 @@ struct FileTreeRow: View {
             rowContent
             if isExpanded && item.isDirectory {
                 ForEach(children) { child in
-                    FileTreeRow(item: child, selectedFile: $selectedFile, highlightedFile: $highlightedFile)
+                    FileTreeRow(item: child, highlightedFile: $highlightedFile)
                 }
             }
         }
@@ -138,19 +130,18 @@ struct FileTreeRow: View {
         .frame(height: 24)
         .background(rowBackground)
         .onHover { isHovered = $0 }
-        .onTapGesture {
-            let now = Date()
-            let isDouble = now.timeIntervalSince(lastTapTime) < 0.35
-            lastTapTime = now
-
+        .onTapGesture(count: 2) {
+            if !item.isDirectory {
+                highlightedFile = item.url
+                appState.openFile(item.url)
+            }
+        }
+        .onTapGesture(count: 1) {
             if item.isDirectory {
                 isExpanded.toggle()
                 if isExpanded && children.isEmpty {
                     children = FileItem.children(of: item.url, depth: item.depth + 1)
                 }
-            } else if isDouble {
-                highlightedFile = item.url
-                selectedFile = item.url
             } else {
                 highlightedFile = item.url
             }

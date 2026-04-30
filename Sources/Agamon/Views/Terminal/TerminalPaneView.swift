@@ -8,6 +8,16 @@
 // with the target paneID. AgamonTerminalView receives it and calls makeFirstResponder on
 // itself directly — bypassing SwiftUI's render cycle which is prone to timing races.
 //
+// Scrollbar: SwiftTerm adds a bare NSScroller (not NSScrollView) directly as a subview,
+// hardcoded to .legacy style. setupScroller() re-applies that style AFTER didAddSubview
+// returns, so forcing .overlay there gets clobbered. Instead we hide the scroller
+// entirely — SwiftTerm's updateScroller() only touches isEnabled/value/knobProportion,
+// never isHidden, so the hide sticks. Mouse-wheel/keyboard scrolling still works.
+// Gap fix: SwiftTerm's getEffectiveWidth always subtracts scrollerWidth from bounds.width.
+// To compensate, TerminalNSViewWrapper is given a frame that's scrollerWidth pixels wider
+// than its container (negative trailing padding). SwiftTerm then fills the full visible
+// width with text columns. The ZStack clips the overflow so nothing bleeds out.
+//
 // Related: SplitContainerView.swift (positions panes), AppState.focusedPaneID (focus ring),
 //          Theme.swift (font/color constants), Shortcuts.swift (⌘E wires focusFilePanel).
 
@@ -26,6 +36,12 @@ struct TerminalPaneView: View {
             ?? FileManager.default.homeDirectoryForCurrentUser.path
     }
 
+    // Legacy scroller width — SwiftTerm subtracts this from bounds.width regardless of
+    // visibility. We extend the terminal frame by this amount so text fills the container.
+    private var scrollerReservedWidth: CGFloat {
+        NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+    }
+
     var body: some View {
         ZStack {
             TerminalNSViewWrapper(
@@ -36,6 +52,7 @@ struct TerminalPaneView: View {
                 fontSize: appState.terminalFontSize,
                 isActive: isFocused
             )
+            .padding(.trailing, -scrollerReservedWidth)
 
             if !isFocused && appState.dimInactivePanes && appState.inactivePaneDimAmount > 0 {
                 if appState.dimOnlyText {
@@ -49,6 +66,7 @@ struct TerminalPaneView: View {
                 }
             }
         }
+        .clipped()
     }
 }
 
@@ -66,24 +84,23 @@ final class AgamonTerminalView: LocalProcessTerminalView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        // Remove first to avoid duplicate observers when a cached view is re-parented.
+        NotificationCenter.default.removeObserver(self, name: .agamonFocusTerminal, object: nil)
         guard window != nil else { return }
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleFocusRequest(_:)),
             name: .agamonFocusTerminal, object: nil
         )
-        configureOverlayScroller()
     }
 
-    // SwiftTerm embeds an NSScrollView internally; find it and switch to overlay style
-    // so the scrollbar only appears while scrolling rather than always being visible.
-    private func configureOverlayScroller() {
-        func findScrollView(in view: NSView) -> NSScrollView? {
-            if let sv = view as? NSScrollView { return sv }
-            return view.subviews.lazy.compactMap { findScrollView(in: $0) }.first
-        }
-        if let sv = findScrollView(in: self) {
-            sv.scrollerStyle = .overlay
-            sv.autohidesScrollers = true
+    // SwiftTerm adds a bare NSScroller (not NSScrollView) directly as a subview.
+    // Hide it: setupScroller() re-applies .legacy after this hook so style overrides
+    // don't stick, but isHidden is never touched by SwiftTerm's update path.
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        if let scroller = subview as? NSScroller {
+            scroller.isHidden = true
+            scroller.alphaValue = 0
         }
     }
 
@@ -116,7 +133,16 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
     let fontSize: CGFloat
     let isActive: Bool
 
+    @Environment(AppState.self) private var appState
+
     func makeNSView(context: Context) -> AgamonTerminalView {
+        // Return cached view — preserves the running pty session across SwiftUI identity
+        // resets (tab switch, new split, pane tree restructure).
+        if let cached = appState.terminalViews[paneID] {
+            cached.processDelegate = context.coordinator
+            return cached
+        }
+
         let tv = AgamonTerminalView(frame: .zero)
         tv.paneID = paneID
         tv.shouldAutoFocus = isActive
@@ -132,6 +158,7 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
             }
         }
 
+        appState.terminalViews[paneID] = tv
         return tv
     }
 

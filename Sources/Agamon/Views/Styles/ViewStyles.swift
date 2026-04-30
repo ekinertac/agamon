@@ -4,6 +4,7 @@
 // Related: Theme.swift (tokens), used throughout Views/.
 
 import SwiftUI
+import AppKit
 
 // MARK: - Button Styles
 
@@ -118,5 +119,12 @@ struct SectionHeaderStyle: ViewModifier {
 extension View {
     func sectionHeader() -> some View {
         modifier(SectionHeaderStyle())
+    }
+
+    func resizeCursor(vertical: Bool = false) -> some View {
+        self.onHover { inside in
+            if inside { (vertical ? NSCursor.resizeUpDown : NSCursor.resizeLeftRight).push() }
+            else { NSCursor.pop() }
+        }
     }
 }

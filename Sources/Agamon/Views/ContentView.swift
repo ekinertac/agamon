@@ -1,8 +1,9 @@
-// Root layout: sidebar | terminal area | file panel.
-// Uses a manual HStack split rather than NavigationSplitView to have full control
-// over widths, dividers, and panel visibility without NavigationSplitView's opinionated chrome.
-// Related: SidebarView.swift, TabBarView.swift, SplitContainerView.swift, FilePanelView.swift,
-//          AppState.swift (drives visibility and selection).
+// Root layout: [projects] | [terminals] | [editor] | [file explorer].
+// Columns 3 and 4 are independently collapsible. The editor (column 3) auto-opens when
+// a file is double-clicked in the explorer; the explorer (column 4) is toggled with ⌘E.
+// Uses a manual HStack rather than NavigationSplitView for full control over widths and chrome.
+// Related: SidebarView.swift, SplitContainerView.swift, EditorPanelView.swift,
+//          FilePanelView.swift, AppState.swift (drives visibility and selection).
 
 import SwiftUI
 
@@ -11,11 +12,13 @@ struct ContentView: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            // Column 1: project list
             SidebarView()
                 .frame(width: Theme.Sidebar.width)
 
             divider
 
+            // Column 2: terminal tabs + split panes
             VStack(spacing: 0) {
                 if let project = appState.selectedProject {
                     TabBarView(project: project)
@@ -27,10 +30,20 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+            // Column 3: text editor (shown when a file is open)
+            if appState.editorPanelVisible {
+                divider
+                EditorPanelView()
+                    .frame(width: Theme.EditorPanel.width)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+
+            // Column 4: file explorer
             if appState.filePanelVisible {
                 divider
                 FilePanelView()
                     .frame(width: Theme.FilePanel.width)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .background(Theme.Color.background)

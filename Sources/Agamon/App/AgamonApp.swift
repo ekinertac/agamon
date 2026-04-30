@@ -1,7 +1,7 @@
 // App entry point. Declares the SwiftUI App scene and injects AppState into the environment.
-// Sets window chrome to unified/hidden-titlebar for a clean full-bleed dark look.
-// AppDelegate is required (not just SwiftUI lifecycle) to set activation policy before launch —
-// without it, a raw executable has no Dock icon and no App Switcher presence.
+// Uses .hiddenTitleBar (no unified toolbar) so content starts below the traffic-light zone.
+// This prevents column backgrounds/dividers from bleeding into the title bar area.
+// AppDelegate sets activation policy and window background color to match Theme.Color.background.
 // Related: ContentView.swift (root layout), AppState.swift (shared state).
 
 import SwiftUI
@@ -18,7 +18,6 @@ struct AgamonApp: App {
                 .environment(appState)
         }
         .windowStyle(.hiddenTitleBar)
-        .windowToolbarStyle(.unified)
         .defaultSize(width: 1280, height: 800)
         .commands {
             AgamonCommands()
@@ -40,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.activate(ignoringOtherApps: true)
+        let bg = NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1)
+        NSApp.windows.forEach { $0.backgroundColor = bg }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

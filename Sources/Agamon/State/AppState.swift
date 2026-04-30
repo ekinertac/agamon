@@ -16,12 +16,51 @@ extension Notification.Name {
 @Observable
 final class AppState {
 
+    // MARK: - Terminal View Cache
+
+    // Keyed by pane UUID. Outlives SwiftUI view lifecycle so pty sessions survive tab
+    // switches, new splits, and any other pane-tree restructuring that triggers makeNSView.
+    var terminalViews: [UUID: AgamonTerminalView] = [:]
+
+    // MARK: - Tab Focus Memory
+
+    // Session-only (not persisted). Saves last focused paneID per tab so switching
+    // back to a tab restores the exact pane that was active when you left it.
+    private var tabFocusMemory: [UUID: UUID] = [:]
+
+    private func rememberFocus() {
+        guard let tabID = selectedTabID, let paneID = focusedPaneID else { return }
+        tabFocusMemory[tabID] = paneID
+    }
+
+    // Restore the remembered pane for a tab, falling back to firstLeaf if it no longer exists.
+    private func restoreFocus(for tab: WorkTab) {
+        let allLeaves = tab.rootPane.leafIDs()
+        if let remembered = tabFocusMemory[tab.id], allLeaves.contains(remembered) {
+            focusedPaneID = remembered
+        } else {
+            focusedPaneID = tab.rootPane.firstLeafID
+        }
+    }
+
+    private func evictTerminalViews(for pane: PaneNode) {
+        switch pane {
+        case .leaf(let id, _):
+            terminalViews.removeValue(forKey: id)
+        case .split(_, _, _, let first, let second):
+            evictTerminalViews(for: first)
+            evictTerminalViews(for: second)
+        }
+    }
+
     // MARK: - State
 
     var projects: [Project] = []
     var selectedProjectID: UUID?
     var selectedTabID: UUID?
     var focusedPaneID: UUID?
+    var selectedFile: URL? = nil
+    var editorPanelVisible: Bool = false
     var filePanelVisible: Bool = true
     var filePanelFocused: Bool = false
     var activeModifiers: NSEvent.ModifierFlags = []
@@ -90,6 +129,9 @@ final class AppState {
     }
 
     func removeProject(_ id: UUID) {
+        if let project = projects.first(where: { $0.id == id }) {
+            project.tabs.forEach { evictTerminalViews(for: $0.rootPane) }
+        }
         projects.removeAll { $0.id == id }
         if selectedProjectID == id {
             selectedProjectID = projects.last?.id
@@ -132,6 +174,9 @@ final class AppState {
 
     func removeTab(_ tabID: UUID, from projectID: UUID) {
         guard let pi = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        if let tab = projects[pi].tabs.first(where: { $0.id == tabID }) {
+            evictTerminalViews(for: tab.rootPane)
+        }
         projects[pi].tabs.removeAll { $0.id == tabID }
         if selectedTabID == tabID {
             let fallback = projects[pi].tabs.last
@@ -156,9 +201,10 @@ final class AppState {
               let idx = project.tabs.firstIndex(where: { $0.id == selectedTabID }),
               project.tabs.count > 1
         else { return }
-        let newIdx = (idx + 1) % project.tabs.count
-        selectedTabID = project.tabs[newIdx].id
-        focusedPaneID = project.tabs[newIdx].rootPane.firstLeafID
+        rememberFocus()
+        let tab = project.tabs[(idx + 1) % project.tabs.count]
+        selectedTabID = tab.id
+        restoreFocus(for: tab)
     }
 
     func prevTab() {
@@ -166,15 +212,18 @@ final class AppState {
               let idx = project.tabs.firstIndex(where: { $0.id == selectedTabID }),
               project.tabs.count > 1
         else { return }
-        let newIdx = (idx - 1 + project.tabs.count) % project.tabs.count
-        selectedTabID = project.tabs[newIdx].id
-        focusedPaneID = project.tabs[newIdx].rootPane.firstLeafID
+        rememberFocus()
+        let tab = project.tabs[(idx - 1 + project.tabs.count) % project.tabs.count]
+        selectedTabID = tab.id
+        restoreFocus(for: tab)
     }
 
     func selectTab(at index: Int) {
         guard let project = selectedProject, index < project.tabs.count else { return }
-        selectedTabID = project.tabs[index].id
-        focusedPaneID = project.tabs[index].rootPane.firstLeafID
+        rememberFocus()
+        let tab = project.tabs[index]
+        selectedTabID = tab.id
+        restoreFocus(for: tab)
     }
 
     func selectProject(at index: Int) {
@@ -193,6 +242,7 @@ final class AppState {
         else { return }
 
         let paneID = focusedPaneID ?? projects[pi].tabs[ti].rootPane.firstLeafID
+        terminalViews.removeValue(forKey: paneID)
         if let newRoot = projects[pi].tabs[ti].rootPane.removingLeaf(id: paneID) {
             projects[pi].tabs[ti].rootPane = newRoot
             focusedPaneID = newRoot.firstLeafID
@@ -211,6 +261,17 @@ final class AppState {
     private func setFontSize(_ size: CGFloat) {
         terminalFontSize = size
         UserDefaults.standard.set(Double(size), forKey: "terminalFontSize")
+    }
+
+    // MARK: - Editor Panel
+
+    func openFile(_ url: URL) {
+        selectedFile = url
+        editorPanelVisible = true
+    }
+
+    func closeEditor() {
+        editorPanelVisible = false
     }
 
     // MARK: - File Panel
@@ -243,6 +304,15 @@ final class AppState {
         NotificationCenter.default.post(name: .agamonFocusTerminal, object: id)
     }
 
+    // Updates the ratio of a split node without persisting — ratios are session-only.
+    func updateSplitRatio(splitID: UUID, newRatio: CGFloat) {
+        guard let pi = projects.firstIndex(where: { $0.id == selectedProjectID }),
+              let ti = projects[pi].tabs.firstIndex(where: { $0.id == selectedTabID })
+        else { return }
+        projects[pi].tabs[ti].rootPane = projects[pi].tabs[ti].rootPane
+            .updatingRatio(splitID: splitID, newRatio: newRatio)
+    }
+
     // MARK: - Pane Navigation
 
     func focusPane(direction: PaneNavigationDirection) {
@@ -251,6 +321,7 @@ final class AppState {
               let neighborID = tab.rootPane.neighborLeafID(of: currentID, direction: direction)
         else { return }
         focusedPaneID = neighborID
+        tabFocusMemory[tab.id] = neighborID
         NotificationCenter.default.post(name: .agamonFocusTerminal, object: neighborID)
     }
 
@@ -263,8 +334,12 @@ final class AppState {
               let ti = projects[pi].tabs.firstIndex(where: { $0.id == tabID })
         else { return }
 
+        let newPaneID = UUID()
         projects[pi].tabs[ti].rootPane = projects[pi].tabs[ti].rootPane
-            .splitting(leafID: paneID, axis: axis)
+            .splitting(leafID: paneID, axis: axis, newPaneID: newPaneID)
+        focusedPaneID = newPaneID
+        tabFocusMemory[tabID] = newPaneID
+        NotificationCenter.default.post(name: .agamonFocusTerminal, object: newPaneID)
         persist()
     }
 
@@ -300,6 +375,7 @@ final class AppState {
             while let v = view {
                 if let terminal = v as? AgamonTerminalView, let id = terminal.paneID {
                     self.focusedPaneID = id
+                    if let tabID = self.selectedTabID { self.tabFocusMemory[tabID] = id }
                     break
                 }
                 view = v.superview

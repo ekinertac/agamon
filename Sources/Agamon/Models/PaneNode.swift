@@ -127,8 +127,22 @@ indirect enum PaneNode: Identifiable, Codable, Hashable {
         }
     }
 
+    // Return a new tree with the split node's ratio updated.
+    func updatingRatio(splitID: UUID, newRatio: CGFloat) -> PaneNode {
+        switch self {
+        case .leaf: return self
+        case .split(let id, let axis, _, let first, let second) where id == splitID:
+            return .split(id: id, axis: axis, ratio: newRatio, first: first, second: second)
+        case .split(let id, let axis, let ratio, let first, let second):
+            return .split(id: id, axis: axis, ratio: ratio,
+                          first:  first.updatingRatio(splitID: splitID, newRatio: newRatio),
+                          second: second.updatingRatio(splitID: splitID, newRatio: newRatio))
+        }
+    }
+
     // Split a leaf into two, keeping the original as `first`.
-    func splitting(leafID: UUID, axis: SplitAxis, ratio: CGFloat = 0.5) -> PaneNode {
+    // newPaneID is passed in so the caller can focus the new pane after the tree is updated.
+    func splitting(leafID: UUID, axis: SplitAxis, newPaneID: UUID, ratio: CGFloat = 0.5) -> PaneNode {
         switch self {
         case .leaf(let id, let sessionID) where id == leafID:
             return .split(
@@ -136,15 +150,15 @@ indirect enum PaneNode: Identifiable, Codable, Hashable {
                 axis: axis,
                 ratio: ratio,
                 first: .leaf(id: id, sessionID: sessionID),
-                second: .leaf(id: UUID(), sessionID: nil)
+                second: .leaf(id: newPaneID, sessionID: nil)
             )
         case .leaf:
             return self
         case .split(let id, let a, let r, let first, let second):
             return .split(
                 id: id, axis: a, ratio: r,
-                first:  first.splitting(leafID: leafID, axis: axis, ratio: ratio),
-                second: second.splitting(leafID: leafID, axis: axis, ratio: ratio)
+                first:  first.splitting(leafID: leafID, axis: axis, newPaneID: newPaneID, ratio: ratio),
+                second: second.splitting(leafID: leafID, axis: axis, newPaneID: newPaneID, ratio: ratio)
             )
         }
     }

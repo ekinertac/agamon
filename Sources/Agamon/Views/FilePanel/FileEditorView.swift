@@ -2,7 +2,8 @@
 // Wraps NSTextView (AppKit) because SwiftUI's TextEditor lacks: monospace font control,
 // disabling smart quotes/dashes, and proper dark background without fighting system appearance.
 // Cmd+S saves. Dirty state shown as a dot next to the filename.
-// Related: FilePanelView.swift (hosts this), FileTreeView.swift (file selection drives url/content).
+// Related: EditorPanelView.swift (hosts this, owns file loading and content state),
+//          FileTreeView.swift (double-click triggers appState.openFile which shows this).
 
 import SwiftUI
 import AppKit
@@ -80,31 +81,45 @@ struct EditorTextView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
-        let textView = NSTextView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1)
+
+        let contentSize = scrollView.contentSize
+        let textView = NSTextView(frame: NSRect(origin: .zero, size: contentSize))
+
+        // NSTextView must be told to resize vertically and track the scroll view width,
+        // otherwise it renders at zero height and nothing is visible.
+        textView.minSize = NSSize(width: 0, height: contentSize.height)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                                  height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.containerSize = NSSize(
+            width: contentSize.width, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.widthTracksTextView = true
 
         textView.isRichText = false
         textView.isEditable = true
         textView.isSelectable = true
         textView.allowsUndo = true
         textView.font = NSFont.monospacedSystemFont(ofSize: Theme.FontSize.sm, weight: .regular)
-        textView.textColor = .white
+        textView.textColor = NSColor(white: 0.85, alpha: 1)
         textView.backgroundColor = NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1)
         textView.textContainerInset = NSSize(width: Theme.Spacing.md, height: Theme.Spacing.md)
 
-        // Disable "smart" substitutions — they corrupt code
+        // Disable smart substitutions — they corrupt code
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isAutomaticLinkDetectionEnabled = false
 
         textView.delegate = context.coordinator
-
         scrollView.documentView = textView
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.backgroundColor = .clear
-        scrollView.drawsBackground = false
 
         return scrollView
     }

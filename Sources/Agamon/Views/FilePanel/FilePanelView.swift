@@ -1,22 +1,14 @@
-// Container for the right-side file panel: header + file tree + inline editor.
-// When a file is selected, the tree collapses to 200px and the editor fills the rest.
-//
-// ⌘E (via AppState.focusFilePanel) sets filePanelFocused = true, which this view
-// syncs into a local @State that's passed as a binding to FileTreeView. FileTreeView
-// then requests @FocusState focus and enables ↑/↓/Enter/Escape keyboard navigation.
-//
-// File loading uses task(id:) rather than onChange — task is guaranteed to run on every
-// id change even when the view tree is being rebuilt, where onChange can be skipped.
-// Related: FileTreeView.swift (tree), FileEditorView.swift (editor),
+// 4th column: collapsible file explorer for the active project.
+// Shows only the file tree — file content is displayed in EditorPanelView (column 3).
+// ⌘E (via AppState.focusFilePanel) focuses the tree for keyboard navigation.
+// Escape inside the tree releases focus back to the terminal via refocusActiveTerminal.
+// Related: FileTreeView.swift (tree), EditorPanelView.swift (editor, column 3),
 //          AppState.filePanelFocused (set by ShortcutHandler ⌘E), ContentView.swift.
 
 import SwiftUI
 
 struct FilePanelView: View {
     @Environment(AppState.self) private var appState
-    @State private var selectedFile: URL?
-    @State private var fileContent: String = ""
-    @State private var loadError: String?
     @State private var treeFocused: Bool = false
 
     var body: some View {
@@ -25,54 +17,27 @@ struct FilePanelView: View {
             divider
 
             if let project = appState.selectedProject {
-                if let url = selectedFile {
-                    FileTreeView(rootPath: project.rootPath, selectedFile: $selectedFile,
-                                 keyboardFocused: .constant(false))
-                        .frame(maxHeight: 200)
-                    divider
-                    FileEditorView(url: url, content: $fileContent, loadError: loadError)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    FileTreeView(rootPath: project.rootPath, selectedFile: $selectedFile,
-                                 keyboardFocused: $treeFocused)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+                FileTreeView(rootPath: project.rootPath, keyboardFocused: $treeFocused)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 emptyState
             }
         }
         .background(Theme.Color.surface)
         .overlay {
-            // Focus ring when keyboard-navigating the tree
             if treeFocused {
                 RoundedRectangle(cornerRadius: 0)
                     .stroke(Theme.Color.accent.opacity(0.4), lineWidth: 1)
                     .allowsHitTesting(false)
             }
         }
-        // Drive treeFocused from AppState (set by ⌘E in ShortcutHandler)
         .onChange(of: appState.filePanelFocused) { _, new in
             if new { treeFocused = true }
         }
-        // Sync focus release back to AppState and restore terminal first-responder
         .onChange(of: treeFocused) { _, new in
             if !new {
                 appState.filePanelFocused = false
                 appState.refocusActiveTerminal()
-            }
-        }
-        .task(id: selectedFile) {
-            guard let url = selectedFile else {
-                fileContent = ""
-                loadError = nil
-                return
-            }
-            do {
-                fileContent = try String(contentsOf: url, encoding: .utf8)
-                loadError = nil
-            } catch {
-                fileContent = (try? String(contentsOf: url, encoding: .isoLatin1)) ?? ""
-                loadError = fileContent.isEmpty ? error.localizedDescription : nil
             }
         }
     }
@@ -81,20 +46,6 @@ struct FilePanelView: View {
         HStack {
             Text("Files").sectionHeader()
             Spacer()
-
-            if selectedFile != nil {
-                Button {
-                    selectedFile = nil
-                    fileContent = ""
-                    loadError = nil
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 11))
-                }
-                .buttonStyle(IconButtonStyle())
-                .help("Back to tree")
-            }
-
             Button {
                 withAnimation(.easeInOut(duration: 0.15)) {
                     appState.toggleFilePanel()
@@ -108,7 +59,7 @@ struct FilePanelView: View {
             .animation(.easeInOut(duration: 0.12), value: appState.showsCmdShortcuts)
         }
         .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.sm)
+        .frame(height: Theme.Panel.headerHeight)
     }
 
     private var divider: some View {

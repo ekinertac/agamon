@@ -73,16 +73,28 @@ enum Theme {
         static let maxWidth: CGFloat = 300
     }
 
+    enum EditorPanel {
+        static let width:    CGFloat = 420
+        static let minWidth: CGFloat = 280
+        static let maxWidth: CGFloat = 640
+    }
+
     enum FilePanel {
-        static let width:    CGFloat = 280
-        static let minWidth: CGFloat = 220
-        static let maxWidth: CGFloat = 420
+        static let width:    CGFloat = 240
+        static let minWidth: CGFloat = 180
+        static let maxWidth: CGFloat = 360
     }
 
     enum TabBar {
         static let height:       CGFloat = 36
         static let tabMinWidth:  CGFloat = 80
         static let tabMaxWidth:  CGFloat = 200
+    }
+
+    enum Panel {
+        // Shared header height for EditorPanel and FilePanel — matches TabBar.height
+        // so all column headers form a single visual row across the title bar zone.
+        static let headerHeight: CGFloat = 36
     }
 }
 
