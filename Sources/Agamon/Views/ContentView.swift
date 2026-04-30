@@ -35,13 +35,19 @@ struct ContentView: View {
         }
         .background(Theme.Color.background)
         .preferredColorScheme(.dark)
-        .onAppear { appState.load() }
+        .onAppear {
+            appState.load()
+            appState.startModifierMonitor()
+        }
+        .focusedSceneValue(\.appState, appState)
+        .overlay { ShortcutHandler() }
     }
 
     @ViewBuilder
     private var terminalArea: some View {
         if let tab = appState.selectedTab {
             SplitContainerView(pane: tab.rootPane)
+                .id(tab.id)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             emptyState("No tabs open")

@@ -1,23 +1,70 @@
 // Hierarchical file browser for the active project's root directory.
 // Directories expand inline (no separate navigation level) for quick access to nested files.
 // Skips hidden files by default — agents rarely need to browse .git or node_modules.
-// Related: FilePanelView.swift (hosts this), FileEditorView.swift (opens files selected here).
+//
+// Keyboard navigation: when keyboardFocused is true (driven by FilePanelView / ⌘E),
+// ↑/↓ moves through root items, Enter opens a file or toggles a directory,
+// Escape releases focus back to the terminal.
+//
+// Related: FilePanelView.swift (hosts this, owns keyboardFocused state),
+//          FileEditorView.swift (opens files selected here).
 
 import SwiftUI
 
 struct FileTreeView: View {
     let rootPath: String
     @Binding var selectedFile: URL?
+    @Binding var keyboardFocused: Bool
+
     @State private var rootItems: [FileItem] = []
+    @State private var keyboardIndex: Int = 0
+    @State private var highlightedFile: URL?
+    @FocusState private var internalFocus: Bool
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(rootItems) { item in
-                    FileTreeRow(item: item, selectedFile: $selectedFile)
+                ForEach(Array(rootItems.enumerated()), id: \.element.id) { idx, item in
+                    FileTreeRow(
+                        item: item,
+                        selectedFile: $selectedFile,
+                        highlightedFile: $highlightedFile,
+                        isKeyboardSelected: internalFocus && idx == keyboardIndex
+                    )
                 }
             }
             .padding(.vertical, Theme.Spacing.xs)
+        }
+        .focusable()
+        .focused($internalFocus)
+        .onKeyPress(.upArrow) {
+            keyboardIndex = max(0, keyboardIndex - 1)
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            keyboardIndex = min(rootItems.count - 1, keyboardIndex + 1)
+            return .handled
+        }
+        .onKeyPress(.return) {
+            guard !rootItems.isEmpty else { return .ignored }
+            let item = rootItems[keyboardIndex]
+            if !item.isDirectory { selectedFile = item.url }
+            return .handled
+        }
+        .onKeyPress(.escape) {
+            internalFocus = false
+            return .handled
+        }
+        // Sync parent-driven focus flag → internal @FocusState
+        .onChange(of: keyboardFocused) { _, new in
+            if new {
+                internalFocus = true
+                keyboardIndex = 0
+            }
+        }
+        // Sync internal focus loss → parent flag
+        .onChange(of: internalFocus) { _, new in
+            if !new { keyboardFocused = false }
         }
         .onAppear { reload() }
         .onChange(of: rootPath) { reload() }
@@ -25,6 +72,7 @@ struct FileTreeView: View {
 
     private func reload() {
         rootItems = FileItem.children(of: URL(fileURLWithPath: rootPath), depth: 0)
+        keyboardIndex = 0
     }
 }
 
@@ -33,18 +81,23 @@ struct FileTreeView: View {
 struct FileTreeRow: View {
     let item: FileItem
     @Binding var selectedFile: URL?
+    @Binding var highlightedFile: URL?
+    var isKeyboardSelected: Bool = false
+
     @State private var isExpanded = false
     @State private var isHovered = false
     @State private var children: [FileItem] = []
+    @State private var lastTapTime: Date = .distantPast
 
-    private var isSelected: Bool { selectedFile == item.url }
+    private var isOpen: Bool       { selectedFile == item.url }
+    private var isHighlighted: Bool { highlightedFile == item.url || isOpen }
 
     var body: some View {
         VStack(spacing: 0) {
             rowContent
             if isExpanded && item.isDirectory {
                 ForEach(children) { child in
-                    FileTreeRow(item: child, selectedFile: $selectedFile)
+                    FileTreeRow(item: child, selectedFile: $selectedFile, highlightedFile: $highlightedFile)
                 }
             }
         }
@@ -52,10 +105,8 @@ struct FileTreeRow: View {
 
     private var rowContent: some View {
         HStack(spacing: 0) {
-            // Depth indent
             Spacer().frame(width: CGFloat(item.depth) * 14 + Theme.Spacing.md)
 
-            // Expand chevron (directories only)
             Group {
                 if item.isDirectory {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
@@ -69,7 +120,6 @@ struct FileTreeRow: View {
 
             Spacer().frame(width: Theme.Spacing.xs)
 
-            // Icon
             Image(systemName: item.isDirectory ? "folder.fill" : fileIcon(for: item.name))
                 .font(.system(size: 11))
                 .foregroundStyle(item.isDirectory ? Theme.Color.accent.opacity(0.7) : Theme.Color.textTertiary)
@@ -80,26 +130,45 @@ struct FileTreeRow: View {
             Text(item.name)
                 .font(.system(size: Theme.FontSize.sm,
                               weight: item.isDirectory ? .medium : .regular))
-                .foregroundStyle(isSelected ? Theme.Color.textPrimary : Theme.Color.textSecondary)
+                .foregroundStyle(isHighlighted ? Theme.Color.textPrimary : Theme.Color.textSecondary)
                 .lineLimit(1)
 
             Spacer()
         }
         .frame(height: 24)
-        .background(
-            isSelected
-            ? Theme.Color.accentMuted
-            : (isHovered ? Theme.Color.surfaceElevated : Color.clear)
-        )
+        .background(rowBackground)
         .onHover { isHovered = $0 }
         .onTapGesture {
+            let now = Date()
+            let isDouble = now.timeIntervalSince(lastTapTime) < 0.35
+            lastTapTime = now
+
             if item.isDirectory {
                 isExpanded.toggle()
                 if isExpanded && children.isEmpty {
                     children = FileItem.children(of: item.url, depth: item.depth + 1)
                 }
-            } else {
+            } else if isDouble {
+                highlightedFile = item.url
                 selectedFile = item.url
+            } else {
+                highlightedFile = item.url
+            }
+        }
+    }
+
+    private var rowBackground: some View {
+        Group {
+            if isOpen {
+                Theme.Color.accentMuted
+            } else if isHighlighted {
+                Theme.Color.accentMuted.opacity(0.6)
+            } else if isKeyboardSelected {
+                Theme.Color.accent.opacity(0.15)
+            } else if isHovered {
+                Theme.Color.surfaceElevated
+            } else {
+                Color.clear
             }
         }
     }
@@ -137,14 +206,12 @@ struct FileItem: Identifiable {
         return contents
             .compactMap { childURL -> FileItem? in
                 let isDir = (try? childURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                // Skip common large/noisy directories agents don't need to browse
                 if isDir && ["node_modules", ".build", ".git", "DerivedData"].contains(childURL.lastPathComponent) {
                     return nil
                 }
                 return FileItem(url: childURL, name: childURL.lastPathComponent, isDirectory: isDir, depth: depth)
             }
             .sorted { a, b in
-                // Directories first, then alphabetical
                 if a.isDirectory != b.isDirectory { return a.isDirectory }
                 return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
             }

@@ -1,6 +1,9 @@
 // Left sidebar listing all projects. Selection drives the entire terminal + file panel area.
 // Uses LazyVStack + ScrollView instead of List to get full control over row appearance
 // without fighting List's background and selection highlight system.
+//
+// Modifier hints: holding Ctrl reveals ⌃1-9 badges on project rows (project selection shortcut).
+// Holding Cmd reveals ⌘O on the + button (open project shortcut).
 // Related: ContentView.swift (hosts this), AppState.swift (projects + selection),
 //          NewProjectSheet in ContentView.swift (creates projects).
 
@@ -8,7 +11,6 @@ import SwiftUI
 
 struct SidebarView: View {
     @Environment(AppState.self) private var appState
-    @State private var showingNewProject = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,22 +21,21 @@ struct SidebarView: View {
             footer
         }
         .background(Theme.Color.surface)
-        .sheet(isPresented: $showingNewProject) {
-            NewProjectSheet()
-        }
     }
 
     private var header: some View {
         HStack {
             Text("Projects").sectionHeader()
             Spacer()
-            Button {
-                showingNewProject = true
-            } label: {
+            Button(action: appState.openProject) {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .medium))
+                    .opacity(appState.showsCmdShortcuts ? 0 : 1)
+                    .frame(minWidth: 20, minHeight: 20)
             }
             .buttonStyle(IconButtonStyle())
+            .overlay { if appState.showsCmdShortcuts { ShortcutBadge(label: "⌘O") } }
+            .animation(.easeInOut(duration: 0.12), value: appState.showsCmdShortcuts)
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.sm)
@@ -43,10 +44,11 @@ struct SidebarView: View {
     private var projectList: some View {
         ScrollView {
             LazyVStack(spacing: 2) {
-                ForEach(appState.projects) { project in
+                ForEach(Array(appState.projects.enumerated()), id: \.element.id) { idx, project in
                     ProjectRow(
                         project: project,
-                        isSelected: project.id == appState.selectedProjectID
+                        isSelected: project.id == appState.selectedProjectID,
+                        index: idx
                     )
                     .onTapGesture {
                         appState.selectProject(project.id)
@@ -89,6 +91,9 @@ struct SidebarView: View {
 struct ProjectRow: View {
     let project: Project
     let isSelected: Bool
+    let index: Int
+
+    @Environment(AppState.self) private var appState
     @State private var isHovered = false
 
     var body: some View {
@@ -111,11 +116,15 @@ struct ProjectRow: View {
 
             Spacer()
 
-            // Active indicator
-            if isSelected {
+            // Ctrl held → show ⌃N shortcut hint; otherwise show selection dot
+            if appState.showsCtrlShortcuts && index < 9 {
+                ShortcutBadge(label: "⌃\(index + 1)")
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            } else if isSelected {
                 Circle()
                     .fill(Theme.Color.accent)
                     .frame(width: 5, height: 5)
+                    .transition(.opacity)
             }
         }
         .padding(.horizontal, Theme.Spacing.sm)
@@ -129,7 +138,8 @@ struct ProjectRow: View {
                 )
         )
         .onHover { isHovered = $0 }
-        .animation(.easeInOut(duration: 0.1), value: isHovered)
-        .animation(.easeInOut(duration: 0.1), value: isSelected)
+        .animation(.easeInOut(duration: 0.12), value: appState.showsCtrlShortcuts)
+        .animation(.easeInOut(duration: 0.1),  value: isHovered)
+        .animation(.easeInOut(duration: 0.1),  value: isSelected)
     }
 }

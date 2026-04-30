@@ -42,16 +42,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-// Menu bar commands wired to AppState actions.
+// Menu bar commands. Real actions come from AppState via @FocusedValue set in ContentView.
+// ShortcutHandler (Shortcuts.swift) shadows these at the view level when a window is focused,
+// so keyboard presses always call the view-level handler. Menu clicks go through here.
 struct AgamonCommands: Commands {
+    @FocusedValue(\.appState) var appState: AppState?
+
     var body: some Commands {
-        CommandGroup(after: .newItem) {
-            Button("New Tab") {}
-                .keyboardShortcut("t", modifiers: .command)
-            Button("Split Horizontally") {}
-                .keyboardShortcut("d", modifiers: .command)
-            Button("Split Vertically") {}
-                .keyboardShortcut("d", modifiers: [.command, .shift])
+        CommandGroup(replacing: .newItem) {
+            Button("Open Project...") { appState?.openProject() }
+                .keyboardShortcut("o", modifiers: .command)
+            Button("New Tab") {
+                if let id = appState?.selectedProjectID { appState?.addTab(to: id) }
+            }
+            .keyboardShortcut("t", modifiers: .command)
+            .disabled(appState?.selectedProjectID == nil)
+        }
+
+        CommandMenu("View") {
+            Button("Increase Font Size") { appState?.increaseFontSize() }
+                .keyboardShortcut("+", modifiers: .command)
+            Button("Decrease Font Size") { appState?.decreaseFontSize() }
+                .keyboardShortcut("-", modifiers: .command)
+            Button("Reset Font Size")    { appState?.resetFontSize() }
+                .keyboardShortcut("0", modifiers: .command)
+        }
+
+        CommandMenu("Tab") {
+            Button("Next Tab") { appState?.nextTab() }
+                .keyboardShortcut("]", modifiers: [.command, .shift])
+            Button("Previous Tab") { appState?.prevTab() }
+                .keyboardShortcut("[", modifiers: [.command, .shift])
+
+            Divider()
+
+            Button("Split Right") {
+                let id = appState?.focusedPaneID
+                    ?? appState?.selectedTab?.rootPane.firstLeafID
+                if let id { appState?.splitPane(id, axis: .horizontal) }
+            }
+            .keyboardShortcut("d", modifiers: .command)
+            .disabled(appState?.selectedTab == nil)
+
+            Button("Split Down") {
+                let id = appState?.focusedPaneID
+                    ?? appState?.selectedTab?.rootPane.firstLeafID
+                if let id { appState?.splitPane(id, axis: .vertical) }
+            }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
+            .disabled(appState?.selectedTab == nil)
+
+            Divider()
+
+            Button("Toggle File Panel") { appState?.toggleFilePanel() }
+                .keyboardShortcut("e", modifiers: .command)
         }
     }
 }

@@ -57,11 +57,12 @@ enum Theme {
     // MARK: - Typography
 
     enum FontSize {
-        static let xs:  CGFloat = 11
-        static let sm:  CGFloat = 12
-        static let md:  CGFloat = 13
-        static let lg:  CGFloat = 15
-        static let xl:  CGFloat = 18
+        static let xs:    CGFloat = 14
+        static let sm:    CGFloat = 15
+        static let md:    CGFloat = 16
+        static let lg:    CGFloat = 18
+        static let xl:    CGFloat = 22
+        static let badge: CGFloat = xs - 3  // shortcut hint badges, always smaller than body text
     }
 
     // MARK: - Layout Constants

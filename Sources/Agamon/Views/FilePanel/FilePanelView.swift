@@ -1,9 +1,14 @@
 // Container for the right-side file panel: header + file tree + inline editor.
 // When a file is selected, the tree collapses to 200px and the editor fills the rest.
+//
+// ⌘E (via AppState.focusFilePanel) sets filePanelFocused = true, which this view
+// syncs into a local @State that's passed as a binding to FileTreeView. FileTreeView
+// then requests @FocusState focus and enables ↑/↓/Enter/Escape keyboard navigation.
+//
 // File loading uses task(id:) rather than onChange — task is guaranteed to run on every
 // id change even when the view tree is being rebuilt, where onChange can be skipped.
 // Related: FileTreeView.swift (tree), FileEditorView.swift (editor),
-//          AppState.filePanelVisible (toggle), ContentView.swift (hosts this).
+//          AppState.filePanelFocused (set by ShortcutHandler ⌘E), ContentView.swift.
 
 import SwiftUI
 
@@ -12,6 +17,7 @@ struct FilePanelView: View {
     @State private var selectedFile: URL?
     @State private var fileContent: String = ""
     @State private var loadError: String?
+    @State private var treeFocused: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,13 +26,15 @@ struct FilePanelView: View {
 
             if let project = appState.selectedProject {
                 if let url = selectedFile {
-                    FileTreeView(rootPath: project.rootPath, selectedFile: $selectedFile)
+                    FileTreeView(rootPath: project.rootPath, selectedFile: $selectedFile,
+                                 keyboardFocused: .constant(false))
                         .frame(maxHeight: 200)
                     divider
                     FileEditorView(url: url, content: $fileContent, loadError: loadError)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    FileTreeView(rootPath: project.rootPath, selectedFile: $selectedFile)
+                    FileTreeView(rootPath: project.rootPath, selectedFile: $selectedFile,
+                                 keyboardFocused: $treeFocused)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
@@ -34,7 +42,25 @@ struct FilePanelView: View {
             }
         }
         .background(Theme.Color.surface)
-        // task(id:) is more reliable than onChange when the view tree is rebuilding simultaneously.
+        .overlay {
+            // Focus ring when keyboard-navigating the tree
+            if treeFocused {
+                RoundedRectangle(cornerRadius: 0)
+                    .stroke(Theme.Color.accent.opacity(0.4), lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+        }
+        // Drive treeFocused from AppState (set by ⌘E in ShortcutHandler)
+        .onChange(of: appState.filePanelFocused) { _, new in
+            if new { treeFocused = true }
+        }
+        // Sync focus release back to AppState and restore terminal first-responder
+        .onChange(of: treeFocused) { _, new in
+            if !new {
+                appState.filePanelFocused = false
+                appState.refocusActiveTerminal()
+            }
+        }
         .task(id: selectedFile) {
             guard let url = selectedFile else {
                 fileContent = ""
@@ -45,7 +71,6 @@ struct FilePanelView: View {
                 fileContent = try String(contentsOf: url, encoding: .utf8)
                 loadError = nil
             } catch {
-                // Try latin-1 fallback for files with non-UTF8 encoding
                 fileContent = (try? String(contentsOf: url, encoding: .isoLatin1)) ?? ""
                 loadError = fileContent.isEmpty ? error.localizedDescription : nil
             }
@@ -72,13 +97,15 @@ struct FilePanelView: View {
 
             Button {
                 withAnimation(.easeInOut(duration: 0.15)) {
-                    appState.filePanelVisible = false
+                    appState.toggleFilePanel()
                 }
             } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11))
+                Image(systemName: "xmark").font(.system(size: 11))
+                    .opacity(appState.showsCmdShortcuts ? 0 : 1)
             }
             .buttonStyle(IconButtonStyle())
+            .overlay { if appState.showsCmdShortcuts { ShortcutBadge(label: "⌘E") } }
+            .animation(.easeInOut(duration: 0.12), value: appState.showsCmdShortcuts)
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.sm)

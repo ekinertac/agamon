@@ -1,12 +1,15 @@
 // Wraps SwiftTerm's LocalProcessTerminalView in SwiftUI for one pane.
 //
 // Key timing constraint: startProcess must fire AFTER the view has its real frame.
-// DispatchQueue.main.async is not reliable — it can still race with SwiftUI's layout pass.
 // The correct hook is layout() override: it fires exactly when the NSView has been sized.
 // AgamonTerminalView subclass uses this to gate startProcess on first non-zero layout.
 //
-// Related: SplitContainerView.swift (positions panes), TmuxController.swift (future backend),
-//          AppState.focusedPaneID (drives focus ring), Theme.swift (font/color constants).
+// Focus restoration: when the file panel is dismissed, AppState posts agamonFocusTerminal
+// with the target paneID. AgamonTerminalView receives it and calls makeFirstResponder on
+// itself directly — bypassing SwiftUI's render cycle which is prone to timing races.
+//
+// Related: SplitContainerView.swift (positions panes), AppState.focusedPaneID (focus ring),
+//          Theme.swift (font/color constants), Shortcuts.swift (⌘E wires focusFilePanel).
 
 import SwiftUI
 import SwiftTerm
@@ -18,9 +21,15 @@ struct TerminalPaneView: View {
 
     var isFocused: Bool { appState.focusedPaneID == paneID }
 
+    private var rootPath: String {
+        appState.selectedProject?.rootPath
+            ?? FileManager.default.homeDirectoryForCurrentUser.path
+    }
+
     var body: some View {
         ZStack {
-            TerminalNSViewWrapper(paneID: paneID)
+            TerminalNSViewWrapper(paneID: paneID, rootPath: rootPath,
+                                  fontSize: appState.terminalFontSize, isActive: isFocused)
                 .onTapGesture { appState.focusedPaneID = paneID }
 
             if isFocused {
@@ -34,19 +43,52 @@ struct TerminalPaneView: View {
 
 // MARK: - AgamonTerminalView
 
-// Subclass to start the process on first layout with a real frame.
-// layout() is called by AppKit after the view is positioned and sized — guaranteed
-// to have correct bounds, unlike makeNSView (frame .zero) or DispatchQueue.main.async
-// (which can fire before the layout pass completes).
+// Subclass to start the process on first layout with a real frame, and to receive
+// agamonFocusTerminal notifications for programmatic first-responder restoration.
 final class AgamonTerminalView: LocalProcessTerminalView {
     var shellLaunch: (() -> Void)?
+    var paneID: UUID?
+    // Set to true in makeNSView when this pane is the focused one at creation time.
+    // On first layout the shell starts and we immediately grab AppKit first-responder.
+    var shouldAutoFocus: Bool = false
     private var didLaunch = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleFocusRequest(_:)),
+            name: .agamonFocusTerminal, object: nil
+        )
+        configureOverlayScroller()
+    }
+
+    // SwiftTerm embeds an NSScrollView internally; find it and switch to overlay style
+    // so the scrollbar only appears while scrolling rather than always being visible.
+    private func configureOverlayScroller() {
+        func findScrollView(in view: NSView) -> NSScrollView? {
+            if let sv = view as? NSScrollView { return sv }
+            return view.subviews.lazy.compactMap { findScrollView(in: $0) }.first
+        }
+        if let sv = findScrollView(in: self) {
+            sv.scrollerStyle = .overlay
+            sv.autohidesScrollers = true
+        }
+    }
+
+    @objc private func handleFocusRequest(_ note: Notification) {
+        guard let id = note.object as? UUID, id == paneID else { return }
+        window?.makeFirstResponder(self)
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
 
     override func layout() {
         super.layout()
         guard !didLaunch, bounds.width > 0, bounds.height > 0 else { return }
         didLaunch = true
-        // Dispatch async to avoid re-entrancy into the layout system.
         DispatchQueue.main.async { [weak self] in
             self?.shellLaunch?()
         }
@@ -57,16 +99,25 @@ final class AgamonTerminalView: LocalProcessTerminalView {
 
 struct TerminalNSViewWrapper: NSViewRepresentable {
     let paneID: UUID
+    let rootPath: String
+    let fontSize: CGFloat
+    let isActive: Bool
 
     func makeNSView(context: Context) -> AgamonTerminalView {
         let tv = AgamonTerminalView(frame: .zero)
+        tv.paneID = paneID
+        tv.shouldAutoFocus = isActive
         tv.processDelegate = context.coordinator
         applyTheme(to: tv)
 
         tv.shellLaunch = { [weak tv] in
             guard let tv else { return }
             let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-            tv.startProcess(executable: shell, args: [], environment: nil, execName: nil)
+            tv.startProcess(executable: shell, args: [], environment: nil, execName: nil,
+                            currentDirectory: rootPath)
+            if tv.shouldAutoFocus {
+                DispatchQueue.main.async { tv.window?.makeFirstResponder(tv) }
+            }
         }
 
         return tv
@@ -74,6 +125,9 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
 
     func updateNSView(_ nsView: AgamonTerminalView, context: Context) {
         context.coordinator.parent = self
+        if nsView.font.pointSize != fontSize {
+            nsView.font = nerdFont(size: fontSize)
+        }
     }
 
     func makeCoordinator() -> TerminalCoordinator { TerminalCoordinator(self) }
@@ -85,7 +139,7 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
         tv.layer?.backgroundColor = bg.cgColor
         tv.caretColor = NSColor(red: 74/255, green: 158/255, blue: 1.0, alpha: 1)
         tv.getTerminal().setCursorStyle(.blinkBlock)
-        tv.font = nerdFont(size: 13)
+        tv.font = nerdFont(size: fontSize)
         tv.installColors(agnosterPalette)
     }
 
