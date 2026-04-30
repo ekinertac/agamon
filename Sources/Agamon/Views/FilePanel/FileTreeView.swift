@@ -1,11 +1,13 @@
 // Hierarchical file browser for the active project's root directory.
-// Single-click highlights; double-click calls appState.openFile() which sets selectedFile
-// and makes the editor panel (column 3) visible.
-// Keyboard navigation: ↑/↓ moves through root items, Enter opens, Escape releases focus.
-// Hidden files and build artifacts (node_modules, .build, .git, DerivedData) are skipped.
-// Related: FilePanelView.swift (hosts this, owns keyboardFocused state),
-//          EditorPanelView.swift (displays the file opened here),
-//          AppState.swift (selectedFile, openFile).
+// Expansion state lives in FileTreeView (expandedPaths + childrenCache) so keyboard
+// navigation can operate on a flat visibleItems list that spans the full tree depth.
+// FileTreeRow is a pure presentation row — it receives expansion state as props and
+// calls back via onToggle; it never owns children or expansion state itself.
+//
+// Keyboard nav: ↑↓ move, → expands dir or enters first child, ← collapses or goes to
+// parent, Enter opens file / toggles dir, Escape releases focus → terminal.
+// Related: FilePanelView.swift (hosts this), EditorPanelView.swift (displays opened files),
+//          AppState.swift (openFile, focusEditor, refocusActiveTerminal).
 
 import SwiftUI
 
@@ -15,93 +17,166 @@ struct FileTreeView: View {
 
     @Environment(AppState.self) private var appState
     @State private var rootItems: [FileItem] = []
+    @State private var expandedPaths: Set<URL> = []
+    @State private var childrenCache: [URL: [FileItem]] = [:]
     @State private var keyboardIndex: Int = 0
     @State private var highlightedFile: URL?
     @FocusState private var internalFocus: Bool
 
+    // Flat ordered list of every row currently visible (root + expanded subtrees).
+    private var visibleItems: [FileItem] { flatten(rootItems) }
+
+    private func flatten(_ items: [FileItem]) -> [FileItem] {
+        items.flatMap { item -> [FileItem] in
+            guard item.isDirectory, expandedPaths.contains(item.url) else { return [item] }
+            return [item] + flatten(childrenCache[item.url] ?? [])
+        }
+    }
+
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(Array(rootItems.enumerated()), id: \.element.id) { idx, item in
-                    FileTreeRow(
-                        item: item,
-                        highlightedFile: $highlightedFile,
-                        isKeyboardSelected: internalFocus && idx == keyboardIndex
-                    )
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(visibleItems.enumerated()), id: \.element.id) { idx, item in
+                        FileTreeRow(
+                            item: item,
+                            isExpanded: expandedPaths.contains(item.url),
+                            highlightedFile: $highlightedFile,
+                            isKeyboardSelected: internalFocus && idx == keyboardIndex,
+                            onToggle: { toggleExpanded(item) }
+                        )
+                        .id(item.id)
+                    }
                 }
+                .padding(.vertical, Theme.Spacing.xs)
             }
-            .padding(.vertical, Theme.Spacing.xs)
-        }
-        .focusable()
-        .focusEffectDisabled()
-        .focused($internalFocus)
-        .onKeyPress(.upArrow) {
-            keyboardIndex = max(0, keyboardIndex - 1)
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            keyboardIndex = min(rootItems.count - 1, keyboardIndex + 1)
-            return .handled
-        }
-        .onKeyPress(.return) {
-            guard !rootItems.isEmpty else { return .ignored }
-            let item = rootItems[keyboardIndex]
-            if !item.isDirectory {
+            .focusable()
+            .focusEffectDisabled()
+            .focused($internalFocus)
+            .onKeyPress(.upArrow) {
+                guard keyboardIndex > 0 else { return .handled }
+                keyboardIndex -= 1
+                scroll(to: keyboardIndex, proxy: proxy)
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                guard keyboardIndex < visibleItems.count - 1 else { return .handled }
+                keyboardIndex += 1
+                scroll(to: keyboardIndex, proxy: proxy)
+                return .handled
+            }
+            .onKeyPress(.rightArrow) {
+                guard !visibleItems.isEmpty else { return .ignored }
+                let item = visibleItems[keyboardIndex]
+                guard item.isDirectory else { return .handled }
+                if !expandedPaths.contains(item.url) {
+                    // Expand the directory
+                    toggleExpanded(item)
+                } else if keyboardIndex + 1 < visibleItems.count {
+                    // Already expanded — move into first child
+                    keyboardIndex += 1
+                    scroll(to: keyboardIndex, proxy: proxy)
+                }
+                return .handled
+            }
+            .onKeyPress(.leftArrow) {
+                guard !visibleItems.isEmpty else { return .ignored }
+                let item = visibleItems[keyboardIndex]
+                if item.isDirectory && expandedPaths.contains(item.url) {
+                    // Collapse the open directory
+                    expandedPaths.remove(item.url)
+                } else {
+                    // Jump to parent directory
+                    let parentDepth = item.depth - 1
+                    if parentDepth >= 0 {
+                        for i in stride(from: keyboardIndex - 1, through: 0, by: -1) {
+                            if visibleItems[i].depth == parentDepth {
+                                keyboardIndex = i
+                                scroll(to: i, proxy: proxy)
+                                break
+                            }
+                        }
+                    }
+                }
+                return .handled
+            }
+            .onKeyPress(.return) {
+                guard !visibleItems.isEmpty else { return .ignored }
+                let item = visibleItems[keyboardIndex]
+                if item.isDirectory {
+                    toggleExpanded(item)
+                } else {
+                    internalFocus = false
+                    appState.openFile(item.url)
+                    appState.focusEditor()
+                }
+                return .handled
+            }
+            .onKeyPress(.escape) {
                 internalFocus = false
-                appState.openFile(item.url)
-                appState.focusEditor()
+                appState.refocusActiveTerminal()
+                return .handled
             }
-            return .handled
+            .onChange(of: expandedPaths) { _, _ in
+                // Clamp after collapse shrinks the list
+                keyboardIndex = min(keyboardIndex, max(0, visibleItems.count - 1))
+            }
+            .onChange(of: keyboardFocused) { _, new in
+                if new { internalFocus = true; keyboardIndex = 0 }
+            }
+            .onChange(of: internalFocus) { _, new in
+                if !new { keyboardFocused = false }
+            }
+            .onAppear { reload() }
+            .onChange(of: rootPath) { reload() }
         }
-        .onKeyPress(.escape) {
-            internalFocus = false
-            appState.refocusActiveTerminal()
-            return .handled
+    }
+
+    // MARK: - Helpers
+
+    private func toggleExpanded(_ item: FileItem) {
+        guard item.isDirectory else { return }
+        if expandedPaths.contains(item.url) {
+            expandedPaths.remove(item.url)
+        } else {
+            if childrenCache[item.url] == nil {
+                childrenCache[item.url] = FileItem.children(of: item.url, depth: item.depth + 1)
+            }
+            expandedPaths.insert(item.url)
         }
-        .onChange(of: keyboardFocused) { _, new in
-            if new { internalFocus = true; keyboardIndex = 0 }
-        }
-        .onChange(of: internalFocus) { _, new in
-            if !new { keyboardFocused = false }
-        }
-        .onAppear { reload() }
-        .onChange(of: rootPath) { reload() }
+    }
+
+    private func scroll(to index: Int, proxy: ScrollViewProxy) {
+        guard index < visibleItems.count else { return }
+        proxy.scrollTo(visibleItems[index].id, anchor: .center)
     }
 
     private func reload() {
         rootItems = FileItem.children(of: URL(fileURLWithPath: rootPath), depth: 0)
+        expandedPaths = []
+        childrenCache = [:]
         keyboardIndex = 0
     }
 }
 
 // MARK: - Row
 
+// Pure presentation — receives expansion state, calls back via onToggle.
+// Children are NOT rendered here; the flat list in FileTreeView handles ordering.
 struct FileTreeRow: View {
     let item: FileItem
+    let isExpanded: Bool
     @Binding var highlightedFile: URL?
     var isKeyboardSelected: Bool = false
+    var onToggle: () -> Void = {}
 
     @Environment(AppState.self) private var appState
-    @State private var isExpanded = false
     @State private var isHovered = false
-    @State private var children: [FileItem] = []
-    @State private var lastTapTime: Date = .distantPast
 
-    private var isOpen: Bool       { appState.selectedFile == item.url }
+    private var isOpen: Bool        { appState.selectedFile == item.url }
     private var isHighlighted: Bool { highlightedFile == item.url || isOpen }
 
     var body: some View {
-        VStack(spacing: 0) {
-            rowContent
-            if isExpanded && item.isDirectory {
-                ForEach(children) { child in
-                    FileTreeRow(item: child, highlightedFile: $highlightedFile)
-                }
-            }
-        }
-    }
-
-    private var rowContent: some View {
         HStack(spacing: 0) {
             Spacer().frame(width: CGFloat(item.depth) * 14 + Theme.Spacing.md)
 
@@ -120,7 +195,9 @@ struct FileTreeRow: View {
 
             Image(systemName: item.isDirectory ? "folder.fill" : fileIcon(for: item.name))
                 .font(.system(size: 11))
-                .foregroundStyle(item.isDirectory ? Theme.Color.accent.opacity(0.7) : Theme.Color.textTertiary)
+                .foregroundStyle(item.isDirectory
+                    ? Theme.Color.accent.opacity(0.7)
+                    : Theme.Color.textTertiary)
                 .frame(width: 14)
 
             Spacer().frame(width: Theme.Spacing.xs)
@@ -144,43 +221,31 @@ struct FileTreeRow: View {
             }
         }
         .onTapGesture(count: 1) {
-            if item.isDirectory {
-                isExpanded.toggle()
-                if isExpanded && children.isEmpty {
-                    children = FileItem.children(of: item.url, depth: item.depth + 1)
-                }
-            } else {
-                highlightedFile = item.url
-            }
+            if item.isDirectory { onToggle() }
+            else { highlightedFile = item.url }
         }
     }
 
     private var rowBackground: some View {
         Group {
-            if isOpen {
-                Theme.Color.accentMuted
-            } else if isHighlighted {
-                Theme.Color.accentMuted.opacity(0.6)
-            } else if isKeyboardSelected {
-                Theme.Color.accent.opacity(0.15)
-            } else if isHovered {
-                Theme.Color.surfaceElevated
-            } else {
-                Color.clear
-            }
+            if isOpen              { Theme.Color.accentMuted }
+            else if isHighlighted  { Theme.Color.accentMuted.opacity(0.6) }
+            else if isKeyboardSelected { Theme.Color.accent.opacity(0.15) }
+            else if isHovered      { Theme.Color.surfaceElevated }
+            else                   { Color.clear }
         }
     }
 
     private func fileIcon(for name: String) -> String {
         let ext = (name as NSString).pathExtension.lowercased()
         switch ext {
-        case "swift": return "swift"
-        case "py":    return "doc.text.fill"
+        case "swift":                  return "swift"
+        case "py":                     return "doc.text.fill"
         case "js", "ts", "jsx", "tsx": return "doc.text.fill"
-        case "json":  return "doc.badge.gearshape"
-        case "md":    return "doc.richtext.fill"
-        case "sh":    return "terminal.fill"
-        default:      return "doc.fill"
+        case "json":                   return "doc.badge.gearshape"
+        case "md":                     return "doc.richtext.fill"
+        case "sh":                     return "terminal.fill"
+        default:                       return "doc.fill"
         }
     }
 }
@@ -188,7 +253,8 @@ struct FileTreeRow: View {
 // MARK: - FileItem
 
 struct FileItem: Identifiable {
-    let id = UUID()
+    // URL is stable across recomputation — used for ForEach identity and ScrollViewReader.
+    var id: URL { url }
     let url: URL
     let name: String
     let isDirectory: Bool
@@ -204,10 +270,10 @@ struct FileItem: Identifiable {
         return contents
             .compactMap { childURL -> FileItem? in
                 let isDir = (try? childURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                if isDir && ["node_modules", ".build", ".git", "DerivedData"].contains(childURL.lastPathComponent) {
-                    return nil
-                }
-                return FileItem(url: childURL, name: childURL.lastPathComponent, isDirectory: isDir, depth: depth)
+                if isDir && ["node_modules", ".build", ".git", "DerivedData"]
+                    .contains(childURL.lastPathComponent) { return nil }
+                return FileItem(url: childURL, name: childURL.lastPathComponent,
+                                isDirectory: isDir, depth: depth)
             }
             .sorted { a, b in
                 if a.isDirectory != b.isDirectory { return a.isDirectory }
