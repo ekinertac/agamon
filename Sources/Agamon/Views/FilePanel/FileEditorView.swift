@@ -15,6 +15,7 @@ struct FileEditorView: View {
     @Binding var isDirty: Bool
     var loadError: String? = nil
 
+    @Environment(AppState.self) private var appState
     @State private var saveError: String?
 
     var body: some View {
@@ -24,8 +25,12 @@ struct FileEditorView: View {
                 statusBar
                 Rectangle().fill(Theme.Color.border).frame(height: 1)
             }
-            EditorTextView(text: $content, onChange: { isDirty = true })
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            EditorTextView(
+                text: $content,
+                onChange: { isDirty = true },
+                focusRequestID: appState.editorFocusRequestID
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         // Hidden button so Cmd+S fires even when the explicit Save button isn't rendered
         .background {
@@ -82,6 +87,12 @@ final class AgamonEditorTextView: NSTextView {}
 struct EditorTextView: NSViewRepresentable {
     @Binding var text: String
     var onChange: () -> Void
+    // Monotonic counter from AppState. Whenever it changes, updateNSView grabs first
+    // responder. This works on first mount too because SwiftUI calls updateNSView with
+    // the current value right after makeNSView, so a focus request posted before the
+    // view existed (e.g. openFile() flips editorPanelVisible and bumps the token in
+    // the same call) is still honored.
+    var focusRequestID: Int
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -135,35 +146,28 @@ struct EditorTextView: NSViewRepresentable {
         if textView.string != text {
             textView.string = text
         }
+        if focusRequestID != context.coordinator.lastFocusRequestID {
+            context.coordinator.lastFocusRequestID = focusRequestID
+            // Defer to next runloop: on first mount the text view may not yet be in
+            // a window, and makeFirstResponder is a no-op without a window.
+            DispatchQueue.main.async { [weak textView] in
+                guard let tv = textView else { return }
+                tv.window?.makeFirstResponder(tv)
+            }
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: EditorTextView
-        // Weak ref so the coordinator can make the text view first responder on demand.
         weak var textView: AgamonEditorTextView?
+        // Last focus token consumed; updateNSView triggers makeFirstResponder when it changes.
+        var lastFocusRequestID: Int = 0
 
         init(_ parent: EditorTextView) {
             self.parent = parent
             super.init()
-            NotificationCenter.default.addObserver(
-                self, selector: #selector(handleFocusEditor),
-                name: .agamonFocusEditor, object: nil
-            )
-        }
-
-        deinit { NotificationCenter.default.removeObserver(self) }
-
-        @objc private func handleFocusEditor() {
-            // Retry until makeNSView has run and textView is in the window hierarchy.
-            // This handles the case where the editor panel just became visible and
-            // the NSViewRepresentable hasn't been set up yet when the notification fires.
-            guard let tv = textView, tv.window != nil else {
-                DispatchQueue.main.async { [weak self] in self?.handleFocusEditor() }
-                return
-            }
-            tv.window?.makeFirstResponder(tv)
         }
 
         func textDidChange(_ notification: Notification) {

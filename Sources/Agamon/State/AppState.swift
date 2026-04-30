@@ -11,8 +11,6 @@ import Observation
 extension Notification.Name {
     // Posted with object: UUID (paneID) to command a specific terminal to become first responder.
     static let agamonFocusTerminal = Notification.Name("agamonFocusTerminal")
-    // Posted (no object) to command the active editor text view to become first responder.
-    static let agamonFocusEditor   = Notification.Name("agamonFocusEditor")
     // Posted with object: UUID (paneID) when a terminal receives a BEL character.
     static let agamonBell = Notification.Name("agamonBell")
 }
@@ -85,6 +83,13 @@ final class AppState {
     var openFiles: [URL] = []        // ordered list of open editor tabs
     var selectedFile: URL? = nil     // currently active editor file
     var editorPanelVisible: Bool = false
+    // Bumped by focusEditor() to request first-responder on the editor text view.
+    // EditorTextView observes this via its prop and grabs focus when the value changes.
+    // Used instead of a notification because the editor view isn't mounted until
+    // editorPanelVisible flips true, so a notification posted in the same call would
+    // miss the not-yet-existing observer. SwiftUI guarantees updateNSView runs on
+    // first mount with the current token, so the freshly-created view picks it up.
+    var editorFocusRequestID: Int = 0
     var filePanelVisible: Bool = true
     var filePanelFocused: Bool = false
     var activeModifiers: NSEvent.ModifierFlags = []
@@ -360,7 +365,7 @@ final class AppState {
     }
 
     func focusEditor() {
-        NotificationCenter.default.post(name: .agamonFocusEditor, object: nil)
+        editorFocusRequestID &+= 1
     }
 
     // Updates the ratio of a split node without persisting — ratios are session-only.
