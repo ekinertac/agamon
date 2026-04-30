@@ -168,7 +168,16 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
 
         tv.shellLaunch = { [weak tv] in
             guard let tv else { return }
-            tv.startProcess(executable: shellPath, args: [], environment: nil, execName: nil,
+            let (exec, args): (String, [String])
+            let tmux = TmuxController.shared
+            if tmux.isAvailable, let id = tv.paneID {
+                // Use tmux: new-session -A reattaches the existing session if it exists,
+                // creating a new one otherwise. Session names are stable (pane UUID is persisted).
+                (exec, args) = tmux.attachArgs(for: id, workingDir: rootPath)
+            } else {
+                (exec, args) = (shellPath, [])
+            }
+            tv.startProcess(executable: exec, args: args, environment: nil, execName: nil,
                             currentDirectory: rootPath)
             if tv.shouldAutoFocus {
                 DispatchQueue.main.async { tv.window?.makeFirstResponder(tv) }

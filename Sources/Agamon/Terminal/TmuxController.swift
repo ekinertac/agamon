@@ -1,94 +1,109 @@
 // Manages the tmux server that backs all terminal sessions.
-// Uses a dedicated Unix socket at ~/.agamon/tmux.sock so Agamon's sessions are isolated
-// from any tmux sessions the user already has running in their own socket.
-// Control mode (-CC) is the eventual target — it lets us attach SwiftTerm PTYs to named panes
-// and get structured events back. For now, basic server lifecycle only.
-// Related: TerminalSession.swift (per-pane sessions), TerminalPaneView.swift (SwiftTerm integration).
+// Uses a dedicated socket at ~/.agamon/tmux.sock so Agamon's sessions are isolated
+// from any tmux sessions the user already has running.
+//
+// Integration model: SwiftTerm runs `tmux new-session -A -s agamon-{paneUUID}` as the
+// PTY process. The `-A` flag attaches to an existing session if one exists, otherwise
+// creates a new one. Because pane UUIDs are persisted in projects.json, the same session
+// name is used on every app restart → seamless reattachment.
+//
+// A minimal config at ~/.agamon/tmux.conf suppresses the status bar and sets the correct
+// TERM so the user sees only their shell with no tmux chrome.
+//
+// Related: TerminalPaneView.swift (calls attachArgs), AppState.swift (calls killSession on pane close).
 
 import Foundation
 
 final class TmuxController {
     static let shared = TmuxController()
 
-    // Isolated socket — doesn't interfere with user's existing tmux sessions.
-    private let socketPath: String
+    private let agamonDir: String
+    let socketPath: String
+    let configPath: String
 
     private init() {
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".agamon").path
-        socketPath = "\(dir)/tmux.sock"
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        agamonDir  = "\(home)/.agamon"
+        socketPath = "\(agamonDir)/tmux.sock"
+        configPath = "\(agamonDir)/tmux.conf"
+    }
+
+    // MARK: - Availability
+
+    var isAvailable: Bool {
+        FileManager.default.isExecutableFile(atPath: tmuxPath)
+    }
+
+    // MARK: - Setup
+
+    // Call once at app start. Writes config, ensures the server is running.
+    func setup() {
+        guard isAvailable else { return }
+        try? FileManager.default.createDirectory(atPath: agamonDir,
+                                                  withIntermediateDirectories: true)
+        writeConfig()
+        if !isServerAlive() { startServer() }
+    }
+
+    private func writeConfig() {
+        // Written fresh each launch so config stays in sync with app expectations.
+        let conf = """
+        set -g status off
+        set -g default-terminal "xterm-256color"
+        set -g escape-time 10
+        """
+        try? conf.write(toFile: configPath, atomically: true, encoding: .utf8)
     }
 
     // MARK: - Server Lifecycle
 
-    func ensureServerRunning() {
-        try? FileManager.default.createDirectory(
-            atPath: (socketPath as NSString).deletingLastPathComponent,
-            withIntermediateDirectories: true
-        )
-        guard !isServerAlive() else { return }
-        startServer()
-    }
-
     private func isServerAlive() -> Bool {
-        let p = Process()
-        p.executableURL = tmuxURL
-        p.arguments = ["-S", socketPath, "list-sessions"]
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError  = FileHandle.nullDevice
-        try? p.run()
-        p.waitUntilExit()
-        return p.terminationStatus == 0
+        run(["-S", socketPath, "list-sessions"]) == 0
     }
 
     private func startServer() {
-        let p = Process()
-        p.executableURL = tmuxURL
-        p.arguments = ["-S", socketPath, "new-session", "-d", "-s", "agamon-boot"]
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError  = FileHandle.nullDevice
-        try? p.run()
-        p.waitUntilExit()
+        // Boot the server with a throwaway session; killed immediately after.
+        run(["-S", socketPath, "-f", configPath, "new-session", "-d", "-s", "agamon-boot"])
     }
 
-    // MARK: - Session Management
+    // MARK: - Per-Pane Session
 
-    func sessionName(for projectID: UUID) -> String {
-        "ag-\(projectID.uuidString.prefix(8))"
+    // Returns (executable, args) to pass to SwiftTerm.startProcess.
+    // new-session -A: attach if session exists, create+attach if not.
+    // -c workingDir applies only on creation; reattach keeps the shell's existing cwd.
+    func attachArgs(for paneID: UUID, workingDir: String) -> (String, [String]) {
+        let args = ["-S", socketPath, "-f", configPath,
+                    "new-session", "-A", "-s", sessionName(for: paneID), "-c", workingDir]
+        return (tmuxPath, args)
     }
 
-    func createSession(projectID: UUID, workingDirectory: String) {
-        ensureServerRunning()
-        let name = sessionName(for: projectID)
-        guard !sessionExists(name) else { return }
-
-        let p = Process()
-        p.executableURL = tmuxURL
-        p.arguments = ["-S", socketPath, "new-session", "-d", "-s", name, "-c", workingDirectory]
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError  = FileHandle.nullDevice
-        try? p.run()
-        p.waitUntilExit()
+    func killSession(for paneID: UUID) {
+        guard isAvailable else { return }
+        run(["-S", socketPath, "kill-session", "-t", sessionName(for: paneID)])
     }
 
-    private func sessionExists(_ name: String) -> Bool {
-        let p = Process()
-        p.executableURL = tmuxURL
-        p.arguments = ["-S", socketPath, "has-session", "-t", name]
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError  = FileHandle.nullDevice
-        try? p.run()
-        p.waitUntilExit()
-        return p.terminationStatus == 0
+    private func sessionName(for paneID: UUID) -> String {
+        "agamon-\(paneID.uuidString)"
     }
 
     // MARK: - Helpers
 
-    private var tmuxURL: URL {
-        for path in ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"] {
-            let url = URL(fileURLWithPath: path)
-            if FileManager.default.isExecutableFile(atPath: path) { return url }
-        }
-        return URL(fileURLWithPath: "/usr/bin/tmux")
+    @discardableResult
+    private func run(_ args: [String]) -> Int32 {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: tmuxPath)
+        p.arguments = args
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError  = FileHandle.nullDevice
+        try? p.run()
+        p.waitUntilExit()
+        return p.terminationStatus
+    }
+
+    var tmuxPath: String {
+        let candidates = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"]
+        return candidates.first {
+            FileManager.default.isExecutableFile(atPath: $0)
+        } ?? "/usr/bin/tmux"
     }
 }

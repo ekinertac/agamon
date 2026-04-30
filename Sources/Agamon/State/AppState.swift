@@ -67,6 +67,7 @@ final class AppState {
         switch pane {
         case .leaf(let id, _):
             terminalViews.removeValue(forKey: id)
+            TmuxController.shared.killSession(for: id)
         case .split(_, _, _, let first, let second):
             evictTerminalViews(for: first)
             evictTerminalViews(for: second)
@@ -417,6 +418,7 @@ final class AppState {
     }
 
     func load() {
+        TmuxController.shared.setup()
         guard let data = try? Data(contentsOf: persistURL),
               let saved = try? JSONDecoder().decode([Project].self, from: data)
         else { return }
