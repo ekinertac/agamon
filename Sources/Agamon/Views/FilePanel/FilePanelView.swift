@@ -37,7 +37,14 @@ struct FilePanelView: View {
         .onChange(of: treeFocused) { _, new in
             if !new {
                 appState.filePanelFocused = false
-                appState.refocusActiveTerminal()
+                // Defer one run loop so AppKit can settle the new first responder.
+                // If the editor just grabbed focus (e.g. file double-click), skip the
+                // terminal refocus — overriding it here is the source of the focus race.
+                DispatchQueue.main.async {
+                    if !(NSApp.keyWindow?.firstResponder is AgamonEditorTextView) {
+                        appState.refocusActiveTerminal()
+                    }
+                }
             }
         }
     }
