@@ -316,6 +316,7 @@ final class AppState {
             if openFiles.isEmpty {
                 selectedFile = nil
                 editorPanelVisible = false
+                refocusActiveTerminal()
             } else {
                 selectedFile = openFiles[min(idx, openFiles.count - 1)]
             }
