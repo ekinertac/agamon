@@ -156,7 +156,13 @@ struct EditorTextView: NSViewRepresentable {
         deinit { NotificationCenter.default.removeObserver(self) }
 
         @objc private func handleFocusEditor() {
-            guard let tv = textView else { return }
+            // Retry until makeNSView has run and textView is in the window hierarchy.
+            // This handles the case where the editor panel just became visible and
+            // the NSViewRepresentable hasn't been set up yet when the notification fires.
+            guard let tv = textView, tv.window != nil else {
+                DispatchQueue.main.async { [weak self] in self?.handleFocusEditor() }
+                return
+            }
             tv.window?.makeFirstResponder(tv)
         }
 

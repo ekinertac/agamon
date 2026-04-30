@@ -47,8 +47,9 @@ struct FileTreeView: View {
             guard !rootItems.isEmpty else { return .ignored }
             let item = rootItems[keyboardIndex]
             if !item.isDirectory {
+                internalFocus = false
                 appState.openFile(item.url)
-                DispatchQueue.main.async { appState.focusEditor() }
+                appState.focusEditor()
             }
             return .handled
         }
@@ -139,7 +140,7 @@ struct FileTreeRow: View {
             if !item.isDirectory {
                 highlightedFile = item.url
                 appState.openFile(item.url)
-                DispatchQueue.main.async { appState.focusEditor() }
+                appState.focusEditor()
             }
         }
         .onTapGesture(count: 1) {
