@@ -56,12 +56,21 @@ struct ContentView: View {
         .overlay { ShortcutHandler() }
     }
 
+    // All tabs are kept in the hierarchy simultaneously — only the active one is visible.
+    // This prevents AgamonTerminalView from being re-parented on tab switch, which would
+    // send TIOCSWINSZ to the pty, trigger SIGWINCH in tmux, and wipe the visible content.
     @ViewBuilder
     private var terminalArea: some View {
-        if let tab = appState.selectedTab {
-            SplitContainerView(pane: tab.rootPane)
-                .id(tab.id)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        if let project = appState.selectedProject, !project.tabs.isEmpty {
+            ZStack {
+                ForEach(project.tabs) { tab in
+                    SplitContainerView(pane: tab.rootPane)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .opacity(tab.id == appState.selectedTabID ? 1 : 0)
+                        .allowsHitTesting(tab.id == appState.selectedTabID)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             emptyState("No tabs open")
         }

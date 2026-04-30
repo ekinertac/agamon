@@ -98,6 +98,15 @@ final class AgamonTerminalView: LocalProcessTerminalView {
             self, selector: #selector(handleFocusRequest(_:)),
             name: .agamonFocusTerminal, object: nil
         )
+        // Force a full redraw after re-parenting into a new NSHostingView.
+        // SwiftTerm's CALayer needs an explicit invalidation — the normal AppKit dirty-rect
+        // mechanism doesn't catch this because the layer was valid when the view was detached.
+        if didLaunch {
+            DispatchQueue.main.async { [weak self] in
+                self?.needsDisplay = true
+                self?.layer?.setNeedsDisplay()
+            }
+        }
     }
 
     // TerminalView.bell(source:) is open — override to post a notification so AppState
@@ -155,7 +164,10 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
     func makeNSView(context: Context) -> AgamonTerminalView {
         // Return cached view — preserves the running pty session across SwiftUI identity
         // resets (tab switch, new split, pane tree restructure).
+        // removeFromSuperview first: clears AutoLayout constraints tied to the old
+        // NSHostingView so the new one gets a clean slate and doesn't fight stale constraints.
         if let cached = appState.terminalViews[paneID] {
+            cached.removeFromSuperview()
             cached.processDelegate = context.coordinator
             return cached
         }
