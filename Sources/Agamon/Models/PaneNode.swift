@@ -52,11 +52,11 @@ indirect enum PaneNode: Identifiable, Codable, Hashable {
     // Horizontal split axis = left│right; vertical = top─bottom.
     // Origin is top-left, matching SwiftUI's coordinate system.
     func allLeafFrames(in frame: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1))
-        -> [(id: UUID, frame: CGRect)]
+        -> [PaneLeafEntry]
     {
         switch self {
         case .leaf(let id, _):
-            return [(id, frame)]
+            return [PaneLeafEntry(id: id, frame: frame)]
         case .split(_, let axis, let ratio, let first, let second):
             let (f, s) = childFrames(axis: axis, ratio: ratio, in: frame)
             return first.allLeafFrames(in: f) + second.allLeafFrames(in: s)
@@ -127,6 +127,30 @@ indirect enum PaneNode: Identifiable, Codable, Hashable {
         }
     }
 
+    // Current ratio for a given split ID — used by drag handlers to capture base ratio.
+    func ratio(for splitID: UUID) -> CGFloat? {
+        switch self {
+        case .leaf: return nil
+        case .split(let id, _, let ratio, _, _) where id == splitID: return ratio
+        case .split(_, _, _, let first, let second):
+            return first.ratio(for: splitID) ?? second.ratio(for: splitID)
+        }
+    }
+
+    // All split divider positions in the given frame, in depth-first order.
+    func allDividerInfos(in frame: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1))
+        -> [PaneDividerInfo]
+    {
+        switch self {
+        case .leaf: return []
+        case .split(let id, let axis, let ratio, let first, let second):
+            let (ff, sf) = childFrames(axis: axis, ratio: ratio, in: frame)
+            return [PaneDividerInfo(id: id, axis: axis, splitFrame: frame, ratio: ratio)]
+                + first.allDividerInfos(in: ff)
+                + second.allDividerInfos(in: sf)
+        }
+    }
+
     // Return a new tree with the split node's ratio updated.
     func updatingRatio(splitID: UUID, newRatio: CGFloat) -> PaneNode {
         switch self {
@@ -167,6 +191,21 @@ indirect enum PaneNode: Identifiable, Codable, Hashable {
 enum SplitAxis: String, Codable, Hashable {
     case horizontal   // side by side (│)
     case vertical     // stacked     (─)
+}
+
+// Leaf frame entry returned by allLeafFrames() — Identifiable so ForEach can track by UUID.
+struct PaneLeafEntry: Identifiable {
+    let id: UUID
+    let frame: CGRect
+}
+
+// Divider metadata returned by allDividerInfos() — used by SplitContainerView for rendering
+// and drag interaction. splitFrame is the normalized (0-1) frame of the enclosing split node.
+struct PaneDividerInfo: Identifiable {
+    let id: UUID
+    let axis: SplitAxis
+    let splitFrame: CGRect  // normalized frame of this split in the whole container
+    let ratio: CGFloat      // current split ratio within splitFrame
 }
 
 enum PaneNavigationDirection {

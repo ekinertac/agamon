@@ -264,10 +264,19 @@ final class AppState {
 
         let paneID = focusedPaneID ?? projects[pi].tabs[ti].rootPane.firstLeafID
         terminalViews.removeValue(forKey: paneID)
+        TmuxController.shared.killSession(for: paneID)
+        attentionPaneIDs.remove(paneID)
         if let newRoot = projects[pi].tabs[ti].rootPane.removingLeaf(id: paneID) {
             projects[pi].tabs[ti].rootPane = newRoot
-            focusedPaneID = newRoot.firstLeafID
+            let survivingID = newRoot.firstLeafID
+            focusedPaneID = survivingID
+            tabFocusMemory[tabID] = survivingID
+            attentionPaneIDs.remove(survivingID)
             persist()
+            // Explicitly focus the surviving pane — re-parenting doesn't do this automatically.
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .agamonFocusTerminal, object: survivingID)
+            }
         } else {
             removeTab(tabID, from: projectID)
         }

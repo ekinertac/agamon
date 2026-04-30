@@ -9,6 +9,8 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppState.self) private var appState
+    @State private var editorPanelWidth: CGFloat = Theme.EditorPanel.width
+    @State private var editorPanelBaseWidth: CGFloat = Theme.EditorPanel.width
 
     var body: some View {
         HStack(spacing: 0) {
@@ -32,9 +34,13 @@ struct ContentView: View {
 
             // Column 3: text editor (shown when a file is open)
             if appState.editorPanelVisible {
-                divider
+                ResizeDivider {
+                    editorPanelWidth = max(220, min(800, editorPanelBaseWidth - $0))
+                } onEnd: {
+                    editorPanelBaseWidth = editorPanelWidth
+                }
                 EditorPanelView()
-                    .frame(width: Theme.EditorPanel.width)
+                    .frame(width: editorPanelWidth)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
 
@@ -88,6 +94,37 @@ struct ContentView: View {
             .fill(Theme.Color.border)
             .frame(height: 1)
             .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Resize Divider
+
+// 1px visible line with an 8px invisible hit area overlay.
+// Layout width stays 1px — the overlay doesn't affect the HStack geometry.
+struct ResizeDivider: View {
+    let onDrag: (CGFloat) -> Void
+    let onEnd: () -> Void
+
+    var body: some View {
+        Rectangle()
+            .fill(Theme.Color.border)
+            .frame(width: 1)
+            .frame(maxHeight: .infinity)
+            .overlay(
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: 8)
+                    .contentShape(Rectangle())
+                    .onHover { hovering in
+                        if hovering { NSCursor.resizeLeftRight.push() }
+                        else        { NSCursor.pop() }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 1)
+                            .onChanged { onDrag($0.translation.width) }
+                            .onEnded   { _ in onEnd() }
+                    )
+            )
     }
 }
 

@@ -88,6 +88,9 @@ final class AgamonTerminalView: LocalProcessTerminalView {
     // On first layout the shell starts and we immediately grab AppKit first-responder.
     var shouldAutoFocus: Bool = false
     private var didLaunch = false
+    // Last size sent to SwiftTerm via super.layout(). Guards against TIOCSWINSZ(0,0)
+    // during re-parenting transitions and suppresses same-size repeat calls.
+    private var lastLayoutSize: CGSize = .zero
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -140,8 +143,13 @@ final class AgamonTerminalView: LocalProcessTerminalView {
     }
 
     override func layout() {
+        let newSize = bounds.size
+        // Guard before super.layout() — a zero-size call during re-parenting sends
+        // TIOCSWINSZ(0,0) which resets the tmux session. Same-size calls are no-ops.
+        guard newSize.width > 0, newSize.height > 0, newSize != lastLayoutSize else { return }
+        lastLayoutSize = newSize
         super.layout()
-        guard !didLaunch, bounds.width > 0, bounds.height > 0 else { return }
+        guard !didLaunch else { return }
         didLaunch = true
         DispatchQueue.main.async { [weak self] in
             self?.shellLaunch?()
