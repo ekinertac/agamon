@@ -463,6 +463,13 @@ final class AppState {
                 return nil
             }
 
+            // Cmd+W while editor focused → close the active editor tab.
+            // Without consume, ShortcutHandler's closeCurrentPane would fire instead.
+            if mods == .command, event.characters == "w" {
+                if let url = self.selectedFile { self.closeFile(url) }
+                return nil
+            }
+
             return event
         }
 
