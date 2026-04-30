@@ -83,8 +83,7 @@ struct FileTreeView: View {
                 guard !visibleItems.isEmpty else { return .ignored }
                 let item = visibleItems[keyboardIndex]
                 if item.isDirectory && expandedPaths.contains(item.url) {
-                    // Collapse the open directory
-                    expandedPaths.remove(item.url)
+                    toggleExpanded(item)
                 } else {
                     // Jump to parent directory
                     let parentDepth = item.depth - 1
