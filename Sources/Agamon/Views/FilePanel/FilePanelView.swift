@@ -24,13 +24,6 @@ struct FilePanelView: View {
             }
         }
         .background(Theme.Color.surface)
-        .overlay {
-            if treeFocused {
-                RoundedRectangle(cornerRadius: 0)
-                    .stroke(Theme.Color.accent.opacity(0.4), lineWidth: 1)
-                    .allowsHitTesting(false)
-            }
-        }
         .onChange(of: appState.filePanelFocused) { _, new in
             if new { treeFocused = true }
         }
