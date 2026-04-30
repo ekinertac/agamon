@@ -123,6 +123,7 @@ struct EditorTextView: NSViewRepresentable {
         textView.isAutomaticLinkDetectionEnabled = false
 
         textView.delegate = context.coordinator
+        context.coordinator.textView = textView
         scrollView.documentView = textView
 
         return scrollView
@@ -140,8 +141,24 @@ struct EditorTextView: NSViewRepresentable {
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: EditorTextView
+        // Weak ref so the coordinator can make the text view first responder on demand.
+        weak var textView: AgamonEditorTextView?
 
-        init(_ parent: EditorTextView) { self.parent = parent }
+        init(_ parent: EditorTextView) {
+            self.parent = parent
+            super.init()
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(handleFocusEditor),
+                name: .agamonFocusEditor, object: nil
+            )
+        }
+
+        deinit { NotificationCenter.default.removeObserver(self) }
+
+        @objc private func handleFocusEditor() {
+            guard let tv = textView else { return }
+            tv.window?.makeFirstResponder(tv)
+        }
 
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }

@@ -11,6 +11,8 @@ import Observation
 extension Notification.Name {
     // Posted with object: UUID (paneID) to command a specific terminal to become first responder.
     static let agamonFocusTerminal = Notification.Name("agamonFocusTerminal")
+    // Posted (no object) to command the active editor text view to become first responder.
+    static let agamonFocusEditor   = Notification.Name("agamonFocusEditor")
     // Posted with object: UUID (paneID) when a terminal receives a BEL character.
     static let agamonBell = Notification.Name("agamonBell")
 }
@@ -357,6 +359,10 @@ final class AppState {
         NotificationCenter.default.post(name: .agamonFocusTerminal, object: id)
     }
 
+    func focusEditor() {
+        NotificationCenter.default.post(name: .agamonFocusEditor, object: nil)
+    }
+
     // Updates the ratio of a split node without persisting — ratios are session-only.
     func updateSplitRatio(splitID: UUID, newRatio: CGFloat) {
         guard let pi = projects.firstIndex(where: { $0.id == selectedProjectID }),
@@ -471,6 +477,23 @@ final class AppState {
                 return nil
             }
 
+            return event
+        }
+
+        // Cmd+Opt+Right when a terminal is focused and there is no pane to the right →
+        // jump to the editor panel instead of silently doing nothing.
+        // Passes through when a right-neighbor pane exists so focusPane handles it normally.
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            guard NSApp.keyWindow?.firstResponder is AgamonTerminalView else { return event }
+            let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
+            guard mods == [.command, .option], event.keyCode == 124 /* right arrow */ else { return event }
+            guard self.editorPanelVisible, let tab = self.selectedTab else { return event }
+            let currentID = self.focusedPaneID ?? tab.rootPane.firstLeafID
+            if tab.rootPane.neighborLeafID(of: currentID, direction: .right) == nil {
+                self.focusEditor()
+                return nil
+            }
             return event
         }
 
