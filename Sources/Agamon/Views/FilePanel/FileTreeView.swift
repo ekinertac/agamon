@@ -53,6 +53,7 @@ struct FileTreeView: View {
         }
         .onKeyPress(.escape) {
             internalFocus = false
+            appState.refocusActiveTerminal()
             return .handled
         }
         .onChange(of: keyboardFocused) { _, new in

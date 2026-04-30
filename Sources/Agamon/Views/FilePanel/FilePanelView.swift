@@ -1,7 +1,7 @@
 // 4th column: collapsible file explorer for the active project.
 // Shows only the file tree — file content is displayed in EditorPanelView (column 3).
 // ⌘E (via AppState.focusFilePanel) focuses the tree for keyboard navigation.
-// Escape inside the tree releases focus back to the terminal via refocusActiveTerminal.
+// Escape inside the tree releases focus back to the terminal (handled in FileTreeView.onKeyPress).
 // Related: FileTreeView.swift (tree), EditorPanelView.swift (editor, column 3),
 //          AppState.filePanelFocused (set by ShortcutHandler ⌘E), ContentView.swift.
 
@@ -35,17 +35,7 @@ struct FilePanelView: View {
             if new { treeFocused = true }
         }
         .onChange(of: treeFocused) { _, new in
-            if !new {
-                appState.filePanelFocused = false
-                // Defer one run loop so AppKit can settle the new first responder.
-                // If the editor just grabbed focus (e.g. file double-click), skip the
-                // terminal refocus — overriding it here is the source of the focus race.
-                DispatchQueue.main.async {
-                    if !(NSApp.keyWindow?.firstResponder is AgamonEditorTextView) {
-                        appState.refocusActiveTerminal()
-                    }
-                }
-            }
+            if !new { appState.filePanelFocused = false }
         }
     }
 
