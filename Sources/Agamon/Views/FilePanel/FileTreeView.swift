@@ -33,6 +33,7 @@ struct FileTreeView: View {
             .padding(.vertical, Theme.Spacing.xs)
         }
         .focusable()
+        .focusEffectDisabled()
         .focused($internalFocus)
         .onKeyPress(.upArrow) {
             keyboardIndex = max(0, keyboardIndex - 1)
