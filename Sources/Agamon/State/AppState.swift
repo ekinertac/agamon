@@ -11,6 +11,8 @@ import Observation
 extension Notification.Name {
     // Posted with object: UUID (paneID) to command a specific terminal to become first responder.
     static let agamonFocusTerminal = Notification.Name("agamonFocusTerminal")
+    // Posted with object: UUID (paneID) when a terminal receives a BEL character.
+    static let agamonBell = Notification.Name("agamonBell")
 }
 
 @Observable
@@ -21,6 +23,21 @@ final class AppState {
     // Keyed by pane UUID. Outlives SwiftUI view lifecycle so pty sessions survive tab
     // switches, new splits, and any other pane-tree restructuring that triggers makeNSView.
     var terminalViews: [UUID: AgamonTerminalView] = [:]
+
+    // MARK: - Attention
+
+    // Pane IDs that fired a BEL while not focused — drives sidebar badges and pane rings.
+    var attentionPaneIDs: Set<UUID> = []
+
+    func hasAttention(for projectID: UUID) -> Bool {
+        attentionCount(for: projectID) > 0
+    }
+
+    func attentionCount(for projectID: UUID) -> Int {
+        guard let project = projects.first(where: { $0.id == projectID }) else { return 0 }
+        let leaves = project.tabs.flatMap { $0.rootPane.leafIDs() }
+        return leaves.filter { attentionPaneIDs.contains($0) }.count
+    }
 
     // MARK: - Tab Focus Memory
 
@@ -36,11 +53,14 @@ final class AppState {
     // Restore the remembered pane for a tab, falling back to firstLeaf if it no longer exists.
     private func restoreFocus(for tab: WorkTab) {
         let allLeaves = tab.rootPane.leafIDs()
+        let paneID: UUID
         if let remembered = tabFocusMemory[tab.id], allLeaves.contains(remembered) {
-            focusedPaneID = remembered
+            paneID = remembered
         } else {
-            focusedPaneID = tab.rootPane.firstLeafID
+            paneID = tab.rootPane.firstLeafID
         }
+        focusedPaneID = paneID
+        attentionPaneIDs.remove(paneID)
     }
 
     private func evictTerminalViews(for pane: PaneNode) {
@@ -321,6 +341,7 @@ final class AppState {
               let neighborID = tab.rootPane.neighborLeafID(of: currentID, direction: direction)
         else { return }
         focusedPaneID = neighborID
+        attentionPaneIDs.remove(neighborID)
         tabFocusMemory[tab.id] = neighborID
         NotificationCenter.default.post(name: .agamonFocusTerminal, object: neighborID)
     }
@@ -357,7 +378,7 @@ final class AppState {
         try? data.write(to: persistURL, options: .atomic)
     }
 
-    // Call once at app start. Tracks modifier-key state and pane click activations.
+    // Call once at app start. Tracks modifier-key state, pane click activations, and bell signals.
     func startModifierMonitor() {
         NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.activeModifiers = event.modifierFlags
@@ -375,12 +396,23 @@ final class AppState {
             while let v = view {
                 if let terminal = v as? AgamonTerminalView, let id = terminal.paneID {
                     self.focusedPaneID = id
+                    self.attentionPaneIDs.remove(id)
                     if let tabID = self.selectedTabID { self.tabFocusMemory[tabID] = id }
                     break
                 }
                 view = v.superview
             }
             return event
+        }
+
+        // Listen for BEL signals from terminals. Only record attention when the pane
+        // is not already the focused one — no need to alert the user if they're watching.
+        NotificationCenter.default.addObserver(
+            forName: .agamonBell, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self, let paneID = note.object as? UUID else { return }
+            guard self.focusedPaneID != paneID else { return }
+            self.attentionPaneIDs.insert(paneID)
         }
     }
 

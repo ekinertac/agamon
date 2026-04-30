@@ -65,6 +65,13 @@ struct TerminalPaneView: View {
                         .allowsHitTesting(false)
                 }
             }
+
+            if appState.attentionPaneIDs.contains(paneID) {
+                Rectangle()
+                    .strokeBorder(Color(red: 1.0, green: 0.72, blue: 0.1).opacity(0.85), lineWidth: 2)
+                    .allowsHitTesting(false)
+                    .animation(.easeInOut(duration: 0.2), value: appState.attentionPaneIDs.contains(paneID))
+            }
         }
         .clipped()
     }
@@ -91,6 +98,16 @@ final class AgamonTerminalView: LocalProcessTerminalView {
             self, selector: #selector(handleFocusRequest(_:)),
             name: .agamonFocusTerminal, object: nil
         )
+    }
+
+    // TerminalView.bell(source:) is open — override to post a notification so AppState
+    // can record attention for this pane without coupling the view directly to AppState.
+    override func bell(source: SwiftTerm.Terminal) {
+        super.bell(source: source)
+        guard let id = paneID else { return }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .agamonBell, object: id)
+        }
     }
 
     // SwiftTerm adds a bare NSScroller (not NSScrollView) directly as a subview.

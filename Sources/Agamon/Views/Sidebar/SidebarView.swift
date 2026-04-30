@@ -86,6 +86,23 @@ struct SidebarView: View {
     }
 }
 
+// MARK: - Attention Badge
+
+struct AttentionBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text("\(count)")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.black)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(
+                Capsule().fill(Color(red: 1.0, green: 0.72, blue: 0.1))
+            )
+    }
+}
+
 // MARK: - Project Row
 
 struct ProjectRow: View {
@@ -116,10 +133,13 @@ struct ProjectRow: View {
 
             Spacer()
 
-            // Ctrl held → show ⌃N shortcut hint; otherwise show selection dot
+            // Ctrl held → shortcut hint; attention → amber dot; selected → accent dot
             if appState.showsCtrlShortcuts && index < 9 {
                 ShortcutBadge(label: "⌃\(index + 1)")
                     .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            } else if appState.hasAttention(for: project.id) {
+                AttentionBadge(count: appState.attentionCount(for: project.id))
+                    .transition(.opacity.combined(with: .scale(scale: 0.7)))
             } else if isSelected {
                 Circle()
                     .fill(Theme.Color.accent)
@@ -139,6 +159,7 @@ struct ProjectRow: View {
         )
         .onHover { isHovered = $0 }
         .animation(.easeInOut(duration: 0.12), value: appState.showsCtrlShortcuts)
+        .animation(.easeInOut(duration: 0.2),  value: appState.hasAttention(for: project.id))
         .animation(.easeInOut(duration: 0.1),  value: isHovered)
         .animation(.easeInOut(duration: 0.1),  value: isSelected)
     }
