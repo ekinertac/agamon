@@ -23,6 +23,11 @@ struct AgamonApp: App {
         .commands {
             AgamonCommands()
         }
+
+        Settings {
+            SettingsView()
+                .environment(appState)
+        }
     }
 }
 

@@ -28,14 +28,25 @@ struct TerminalPaneView: View {
 
     var body: some View {
         ZStack {
-            TerminalNSViewWrapper(paneID: paneID, rootPath: rootPath,
-                                  fontSize: appState.terminalFontSize, isActive: isFocused)
-                .onTapGesture { appState.focusedPaneID = paneID }
+            TerminalNSViewWrapper(
+                paneID: paneID,
+                rootPath: rootPath,
+                shellPath: appState.shellPath,
+                fontFamily: appState.terminalFontFamily,
+                fontSize: appState.terminalFontSize,
+                isActive: isFocused
+            )
 
-            if isFocused {
-                Rectangle()
-                    .stroke(Theme.Color.accent.opacity(0.5), lineWidth: 1)
-                    .allowsHitTesting(false)
+            if !isFocused && appState.dimInactivePanes && appState.inactivePaneDimAmount > 0 {
+                if appState.dimOnlyText {
+                    // Multiply blend: near-black background barely changes; bright text dims visibly.
+                    Color(white: 1.0 - appState.inactivePaneDimAmount * 0.7)
+                        .blendMode(.multiply)
+                        .allowsHitTesting(false)
+                } else {
+                    Color.black.opacity(appState.inactivePaneDimAmount * 0.8)
+                        .allowsHitTesting(false)
+                }
             }
         }
     }
@@ -100,6 +111,8 @@ final class AgamonTerminalView: LocalProcessTerminalView {
 struct TerminalNSViewWrapper: NSViewRepresentable {
     let paneID: UUID
     let rootPath: String
+    let shellPath: String
+    let fontFamily: String
     let fontSize: CGFloat
     let isActive: Bool
 
@@ -112,8 +125,7 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
 
         tv.shellLaunch = { [weak tv] in
             guard let tv else { return }
-            let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-            tv.startProcess(executable: shell, args: [], environment: nil, execName: nil,
+            tv.startProcess(executable: shellPath, args: [], environment: nil, execName: nil,
                             currentDirectory: rootPath)
             if tv.shouldAutoFocus {
                 DispatchQueue.main.async { tv.window?.makeFirstResponder(tv) }
@@ -125,7 +137,9 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
 
     func updateNSView(_ nsView: AgamonTerminalView, context: Context) {
         context.coordinator.parent = self
-        if nsView.font.pointSize != fontSize {
+        let currentFamily = nsView.font.familyName ?? ""
+        let wantFamily = resolvedFontFamily()
+        if nsView.font.pointSize != fontSize || currentFamily != wantFamily {
             nsView.font = nerdFont(size: fontSize)
         }
     }
@@ -143,18 +157,25 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
         tv.installColors(agnosterPalette)
     }
 
+    private func resolvedFontFamily() -> String {
+        if !fontFamily.isEmpty { return fontFamily }
+        let defaults = ["IosevkaTerm Nerd Font Mono", "IosevkaTermNerdFontMono-Regular",
+                        "IosevkaTerm NFM"]
+        return defaults.first { NSFont(name: $0, size: 13) != nil } ?? ""
+    }
+
     private func nerdFont(size: CGFloat) -> NSFont {
-        let candidates = [
-            "IosevkaTerm Nerd Font Mono",
-            "IosevkaTermNerdFontMono-Regular",
-            "IosevkaTermNerdFontMono-Medium",
-            "IosevkaTerm NFM",
-        ]
+        // Try user-specified family first, then built-in candidates, then system fallback.
+        let candidates = fontFamily.isEmpty
+            ? ["IosevkaTerm Nerd Font Mono", "IosevkaTermNerdFontMono-Regular",
+               "IosevkaTermNerdFontMono-Medium", "IosevkaTerm NFM"]
+            : [fontFamily]
         for name in candidates {
             if let font = NSFont(name: name, size: size) { return font }
         }
-        if let font = NSFontManager.shared.font(withFamily: "IosevkaTerm Nerd Font Mono",
-                                                 traits: [], weight: 5, size: size) {
+        if !fontFamily.isEmpty,
+           let font = NSFontManager.shared.font(withFamily: fontFamily,
+                                                traits: [], weight: 5, size: size) {
             return font
         }
         return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)

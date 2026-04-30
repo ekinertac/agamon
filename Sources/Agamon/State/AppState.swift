@@ -10,7 +10,6 @@ import Observation
 
 extension Notification.Name {
     // Posted with object: UUID (paneID) to command a specific terminal to become first responder.
-    // Bypasses SwiftUI's render cycle so it's not subject to updateNSView timing races.
     static let agamonFocusTerminal = Notification.Name("agamonFocusTerminal")
 }
 
@@ -33,6 +32,37 @@ final class AppState {
         let saved = UserDefaults.standard.double(forKey: "terminalFontSize")
         return saved > 0 ? CGFloat(saved) : 13
     }()
+
+    var terminalFontFamily: String = UserDefaults.standard.string(forKey: "terminalFontFamily") ?? "" {
+        didSet { UserDefaults.standard.set(terminalFontFamily, forKey: "terminalFontFamily") }
+    }
+
+    var shellPath: String = {
+        UserDefaults.standard.string(forKey: "shellPath")
+            ?? ProcessInfo.processInfo.environment["SHELL"]
+            ?? "/bin/zsh"
+    }() {
+        didSet { UserDefaults.standard.set(shellPath, forKey: "shellPath") }
+    }
+
+    var dimInactivePanes: Bool = {
+        UserDefaults.standard.object(forKey: "dimInactivePanes") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "dimInactivePanes")
+    }() {
+        didSet { UserDefaults.standard.set(dimInactivePanes, forKey: "dimInactivePanes") }
+    }
+
+    var inactivePaneDimAmount: Double = {
+        let v = UserDefaults.standard.double(forKey: "inactivePaneDimAmount")
+        return v > 0 ? v : 0.35
+    }() {
+        didSet { UserDefaults.standard.set(inactivePaneDimAmount, forKey: "inactivePaneDimAmount") }
+    }
+
+    var dimOnlyText: Bool = UserDefaults.standard.bool(forKey: "dimOnlyText") {
+        didSet { UserDefaults.standard.set(dimOnlyText, forKey: "dimOnlyText") }
+    }
 
     // MARK: - Derived
 
@@ -252,11 +282,28 @@ final class AppState {
         try? data.write(to: persistURL, options: .atomic)
     }
 
-    // Call once at app start. Tracks modifier-key state so views can reveal shortcut hints.
+    // Call once at app start. Tracks modifier-key state and pane click activations.
     func startModifierMonitor() {
         NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.activeModifiers = event.modifierFlags
                 .intersection([.command, .control, .option, .shift])
+            return event
+        }
+
+        // Hit-test on every left click to find which AgamonTerminalView (and therefore
+        // which pane) was clicked. SwiftTerm's NSView consumes mouse events so onTapGesture
+        // never fires — intercepting here at the event level is the reliable alternative.
+        NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            guard let self, let window = event.window else { return event }
+            let point = event.locationInWindow
+            var view: NSView? = window.contentView?.hitTest(point)
+            while let v = view {
+                if let terminal = v as? AgamonTerminalView, let id = terminal.paneID {
+                    self.focusedPaneID = id
+                    break
+                }
+                view = v.superview
+            }
             return event
         }
     }

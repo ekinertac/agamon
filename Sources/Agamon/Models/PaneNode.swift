@@ -48,35 +48,65 @@ indirect enum PaneNode: Identifiable, Codable, Hashable {
         }
     }
 
-    // Path from this node down to the leaf with the given ID.
-    // Each step records the split node and whether we descended into `first`.
-    // Returns nil if the target is not in this subtree.
-    private func pathToLeaf(id: UUID) -> [(node: PaneNode, tookFirst: Bool)]? {
+    // Compute normalized (0-1) frames for every leaf in the tree.
+    // Horizontal split axis = left│right; vertical = top─bottom.
+    // Origin is top-left, matching SwiftUI's coordinate system.
+    func allLeafFrames(in frame: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1))
+        -> [(id: UUID, frame: CGRect)]
+    {
         switch self {
-        case .leaf(let leafID, _):
-            return leafID == id ? [] : nil
-        case .split(_, _, _, let first, let second):
-            if let path = first.pathToLeaf(id: id) {
-                return [(node: self, tookFirst: true)] + path
-            }
-            if let path = second.pathToLeaf(id: id) {
-                return [(node: self, tookFirst: false)] + path
-            }
-            return nil
+        case .leaf(let id, _):
+            return [(id, frame)]
+        case .split(_, let axis, let ratio, let first, let second):
+            let (f, s) = childFrames(axis: axis, ratio: ratio, in: frame)
+            return first.allLeafFrames(in: f) + second.allLeafFrames(in: s)
         }
     }
 
-    // Returns the leaf ID that is spatially adjacent to `targetID` in the given direction,
-    // or nil if `targetID` is already at that edge.
-    func neighborLeafID(of targetID: UUID, direction: PaneNavigationDirection) -> UUID? {
-        guard let path = pathToLeaf(id: targetID) else { return nil }
-        for step in path.reversed() {
-            guard case .split(_, let axis, _, let first, let second) = step.node,
-                  axis == direction.axis else { continue }
-            if direction.isForward && step.tookFirst  { return second.firstLeafID }
-            if !direction.isForward && !step.tookFirst { return first.lastLeafID }
+    private func childFrames(axis: SplitAxis, ratio: CGFloat,
+                              in frame: CGRect) -> (CGRect, CGRect) {
+        if axis == .horizontal {
+            let w = frame.width * ratio
+            return (
+                CGRect(x: frame.minX,     y: frame.minY, width: w,              height: frame.height),
+                CGRect(x: frame.minX + w, y: frame.minY, width: frame.width - w, height: frame.height)
+            )
+        } else {
+            let h = frame.height * ratio
+            return (
+                CGRect(x: frame.minX, y: frame.minY,     width: frame.width, height: h),
+                CGRect(x: frame.minX, y: frame.minY + h, width: frame.width, height: frame.height - h)
+            )
         }
-        return nil
+    }
+
+    // Returns the visually nearest leaf ID in the given direction.
+    // Scoring: distance-in-direction + perpendicular-center-misalignment.
+    // Lower score = better match, so the most-aligned adjacent pane always wins.
+    func neighborLeafID(of targetID: UUID, direction: PaneNavigationDirection) -> UUID? {
+        let allFrames = allLeafFrames()
+        guard let currentEntry = allFrames.first(where: { $0.id == targetID }) else { return nil }
+        let cur = currentEntry.frame
+        let ε: CGFloat = 0.001
+
+        var best: (id: UUID, score: CGFloat)?
+        for entry in allFrames where entry.id != targetID {
+            let f = entry.frame
+            let score: CGFloat
+            switch direction {
+            case .left  where f.maxX <= cur.minX + ε:
+                score = (cur.midX - f.midX) + abs(cur.midY - f.midY)
+            case .right where f.minX >= cur.maxX - ε:
+                score = (f.midX - cur.midX) + abs(cur.midY - f.midY)
+            case .up    where f.maxY <= cur.minY + ε:
+                score = (cur.midY - f.midY) + abs(cur.midX - f.midX)
+            case .down  where f.minY >= cur.maxY - ε:
+                score = (f.midY - cur.midY) + abs(cur.midX - f.midX)
+            default: continue
+            }
+            if best == nil || score < best!.score { best = (entry.id, score) }
+        }
+        return best?.id
     }
 
     // Remove a leaf by ID. Returns nil only when self IS that leaf (caller promotes sibling).
