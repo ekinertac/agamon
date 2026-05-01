@@ -50,7 +50,8 @@ struct TerminalPaneView: View {
                 shellPath: appState.shellPath,
                 fontFamily: appState.terminalFontFamily,
                 fontSize: appState.terminalFontSize,
-                isActive: isFocused
+                isActive: isFocused,
+                themeName: appState.selectedThemeName
             )
             .padding(.trailing, -scrollerReservedWidth)
 
@@ -84,6 +85,7 @@ struct TerminalPaneView: View {
 final class AgamonTerminalView: LocalProcessTerminalView {
     var shellLaunch: (() -> Void)?
     var paneID: UUID?
+    var appliedThemeName: String = ""
     // Set to true in makeNSView when this pane is the focused one at creation time.
     // On first layout the shell starts and we immediately grab AppKit first-responder.
     var shouldAutoFocus: Bool = false
@@ -166,6 +168,7 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
     let fontFamily: String
     let fontSize: CGFloat
     let isActive: Bool
+    let themeName: String
 
     @Environment(AppState.self) private var appState
 
@@ -215,19 +218,25 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
         if nsView.font.pointSize != fontSize || currentFamily != wantFamily {
             nsView.font = nerdFont(size: fontSize)
         }
+        if nsView.appliedThemeName != themeName {
+            applyTheme(to: nsView)
+        }
     }
 
     func makeCoordinator() -> TerminalCoordinator { TerminalCoordinator(self) }
 
     private func applyTheme(to tv: AgamonTerminalView) {
-        let bg = NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1)
-        tv.nativeBackgroundColor = bg
-        tv.nativeForegroundColor = NSColor(red: 0.85, green: 0.85, blue: 0.85, alpha: 1)
-        tv.layer?.backgroundColor = bg.cgColor
-        tv.caretColor = NSColor(red: 74/255, green: 158/255, blue: 1.0, alpha: 1)
-        tv.getTerminal().setCursorStyle(.blinkBlock)
+        let theme = TerminalTheme.all[themeName]
+            ?? TerminalTheme.all["Catppuccin Mocha"]
+            ?? TerminalTheme.all.values.first!
+        tv.nativeBackgroundColor = theme.background
+        tv.nativeForegroundColor = theme.foreground
+        tv.layer?.backgroundColor = theme.background.cgColor
+        tv.caretColor = theme.cursor
         tv.font = nerdFont(size: fontSize)
-        tv.installColors(agnosterPalette)
+        tv.installColors(theme.palette)
+        tv.appliedThemeName = themeName
+        tv.getTerminal().setCursorStyle(.blinkBlock)
     }
 
     private func resolvedFontFamily() -> String {
@@ -254,32 +263,6 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
         return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
     }
 
-    // Agnoster-iTerm-Theme ANSI 0-15.
-    // SwiftTerm.Color(red:green:blue:) takes 16-bit values (0-65535).
-    // Multiply 8-bit (0-255) by 257 to convert: 255 * 257 = 65535.
-    private var agnosterPalette: [SwiftTerm.Color] {
-        func c(_ r: UInt16, _ g: UInt16, _ b: UInt16) -> SwiftTerm.Color {
-            SwiftTerm.Color(red: r * 257, green: g * 257, blue: b * 257)
-        }
-        return [
-            c(  0,   0,   0),  // 0  black
-            c(172,  65,  66),  // 1  red
-            c( 68, 140,  68),  // 2  green
-            c(193, 156,   0),  // 3  yellow
-            c( 54, 109, 193),  // 4  blue
-            c(133,  72, 155),  // 5  magenta
-            c(  0, 160, 170),  // 6  cyan
-            c(152, 152, 152),  // 7  white
-            c(102, 102, 102),  // 8  bright black
-            c(241, 164, 113),  // 9  bright red
-            c(127, 237, 140),  // 10 bright green
-            c(245, 248, 168),  // 11 bright yellow
-            c(165, 191, 221),  // 12 bright blue
-            c(233, 144, 210),  // 13 bright magenta
-            c(  0, 227, 227),  // 14 bright cyan
-            c(255, 255, 255),  // 15 bright white
-        ]
-    }
 }
 
 // MARK: - Coordinator

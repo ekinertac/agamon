@@ -46,6 +46,17 @@ struct AppearanceSettingsView: View {
                 }
             }
 
+            Section("Theme") {
+                LabeledContent("Color scheme") {
+                    Picker("", selection: $appState.selectedThemeName) {
+                        ForEach(TerminalTheme.orderedNames, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                    .frame(width: 200)
+                }
+            }
+
             Section("Font") {
                 LabeledContent("Family") {
                     TextField("e.g. JetBrainsMono Nerd Font Mono",
