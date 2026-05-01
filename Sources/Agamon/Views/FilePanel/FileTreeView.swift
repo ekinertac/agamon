@@ -19,7 +19,6 @@ struct FileTreeView: View {
     @State private var rootItems: [FileItem] = []
     @State private var expandedPaths: Set<URL> = []
     @State private var childrenCache: [URL: [FileItem]] = [:]
-    @State private var loadingPaths: Set<URL> = []
     @State private var keyboardIndex: Int = 0
     @State private var highlightedFile: URL?
     @FocusState private var internalFocus: Bool
@@ -42,7 +41,6 @@ struct FileTreeView: View {
                         FileTreeRow(
                             item: item,
                             isExpanded: expandedPaths.contains(item.url),
-                            isLoading: loadingPaths.contains(item.url),
                             highlightedFile: $highlightedFile,
                             isKeyboardSelected: internalFocus && idx == keyboardIndex,
                             onToggle: { toggleExpanded(item) }
@@ -138,21 +136,9 @@ struct FileTreeView: View {
     private func toggleExpanded(_ item: FileItem) {
         guard item.isDirectory else { return }
         if expandedPaths.contains(item.url) {
-            // Remove this dir and all descendants so re-expanding starts fresh.
             expandedPaths = expandedPaths.filter { !$0.path.hasPrefix(item.url.path + "/") && $0 != item.url }
-        } else if childrenCache[item.url] != nil {
-            expandedPaths.insert(item.url)
         } else {
-            // Read directory off the main thread so the UI doesn't stall.
-            loadingPaths.insert(item.url)
-            Task.detached(priority: .userInitiated) {
-                let children = FileItem.children(of: item.url, depth: item.depth + 1)
-                await MainActor.run {
-                    childrenCache[item.url] = children
-                    loadingPaths.remove(item.url)
-                    expandedPaths.insert(item.url)
-                }
-            }
+            expandedPaths.insert(item.url)
         }
     }
 
@@ -163,14 +149,12 @@ struct FileTreeView: View {
 
     private func reload() {
         expandedPaths = []
-        childrenCache = [:]
-        loadingPaths = []
         keyboardIndex = 0
-        let url = URL(fileURLWithPath: rootPath)
-        Task.detached(priority: .userInitiated) {
-            let items = FileItem.children(of: url, depth: 0)
-            await MainActor.run { rootItems = items }
-        }
+        let root = URL(fileURLWithPath: rootPath)
+        var cache: [URL: [FileItem]] = [:]
+        FileItem.prefill(from: root, depth: 0, into: &cache)
+        childrenCache = cache
+        rootItems = cache[root] ?? []
     }
 }
 
@@ -181,7 +165,6 @@ struct FileTreeView: View {
 struct FileTreeRow: View {
     let item: FileItem
     let isExpanded: Bool
-    var isLoading: Bool = false
     @Binding var highlightedFile: URL?
     var isKeyboardSelected: Bool = false
     var onToggle: () -> Void = {}
@@ -198,16 +181,10 @@ struct FileTreeRow: View {
 
             Group {
                 if item.isDirectory {
-                    if isLoading {
-                        ProgressView()
-                            .scaleEffect(0.5)
-                            .frame(width: 12, height: 12)
-                    } else {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(Theme.Color.textTertiary)
-                            .frame(width: 12)
-                    }
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(Theme.Color.textTertiary)
+                        .frame(width: 12)
                 } else {
                     Spacer().frame(width: 12)
                 }
@@ -281,6 +258,15 @@ struct FileItem: Identifiable {
     let name: String
     let isDirectory: Bool
     let depth: Int
+
+    // Recursively pre-walk the tree into cache so every expand is a pure dict lookup.
+    static func prefill(from url: URL, depth: Int, into cache: inout [URL: [FileItem]]) {
+        let items = children(of: url, depth: depth)
+        cache[url] = items
+        for item in items where item.isDirectory {
+            prefill(from: item.url, depth: depth + 1, into: &cache)
+        }
+    }
 
     static func children(of url: URL, depth: Int) -> [FileItem] {
         guard let contents = try? FileManager.default.contentsOfDirectory(
