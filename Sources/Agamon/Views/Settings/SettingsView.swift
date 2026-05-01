@@ -121,70 +121,84 @@ struct TextSettingsView: View {
 
 // MARK: - Font size field
 
-// NSTextField subclass so we can intercept ↑/↓ before AppKit's default
-// "jump to start/end of line" behaviour swallows them.
-private final class StepperTextField: NSTextField {
-    var step: CGFloat = 1
-    var minValue: CGFloat = 1
-    var maxValue: CGFloat = 999
-    var onCommit: ((CGFloat) -> Void)?
-
-    override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case 126: // ↑
-            commit(CGFloat(doubleValue) + step)
-        case 125: // ↓
-            commit(CGFloat(doubleValue) - step)
-        default:
-            super.keyDown(with: event)
-        }
-    }
-
-    private func commit(_ raw: CGFloat) {
-        let clamped = min(max(raw, minValue), maxValue)
-        doubleValue = Double(clamped)
-        onCommit?(clamped)
-    }
-}
-
+// NSTextField + NSStepper in a single container — matches the standard macOS
+// number-with-arrows spinner appearance. ↑/↓ on keyboard also work because
+// NSStepper receives the key events when the text field is focused.
 struct FontSizeField: NSViewRepresentable {
     @Binding var value: CGFloat
     var range: ClosedRange<CGFloat> = 8...32
 
-    func makeNSView(context: Context) -> NSTextField {
+    func makeNSView(context: Context) -> NSView {
+        let container = NSView()
+
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         formatter.maximumFractionDigits = 0
         formatter.minimum = NSNumber(value: Double(range.lowerBound))
         formatter.maximum = NSNumber(value: Double(range.upperBound))
 
-        let tf = StepperTextField()
+        let tf = NSTextField()
         tf.formatter = formatter
         tf.alignment = .center
         tf.isBordered = true
         tf.bezelStyle = .roundedBezel
-        tf.controlSize = .regular
-        tf.minValue = range.lowerBound
-        tf.maxValue = range.upperBound
-        tf.step = 1
-        tf.onCommit = { context.coordinator.parent.value = $0 }
+        tf.translatesAutoresizingMaskIntoConstraints = false
         tf.delegate = context.coordinator
-        return tf
+        context.coordinator.textField = tf
+
+        let stepper = NSStepper()
+        stepper.minValue = Double(range.lowerBound)
+        stepper.maxValue = Double(range.upperBound)
+        stepper.increment = 1
+        stepper.valueWraps = false
+        stepper.translatesAutoresizingMaskIntoConstraints = false
+        stepper.target = context.coordinator
+        stepper.action = #selector(Coordinator.stepperChanged(_:))
+        context.coordinator.stepper = stepper
+
+        container.addSubview(tf)
+        container.addSubview(stepper)
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        NSLayoutConstraint.activate([
+            tf.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            tf.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            tf.widthAnchor.constraint(equalToConstant: 52),
+
+            stepper.leadingAnchor.constraint(equalTo: tf.trailingAnchor, constant: 2),
+            stepper.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            stepper.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+
+            container.heightAnchor.constraint(equalToConstant: 22),
+        ])
+
+        return container
     }
 
-    func updateNSView(_ tf: NSTextField, context: Context) {
+    func updateNSView(_ container: NSView, context: Context) {
         context.coordinator.parent = self
-        // Don't overwrite while the user is editing
+        guard let tf = context.coordinator.textField,
+              let stepper = context.coordinator.stepper else { return }
         if tf.currentEditor() == nil {
             tf.integerValue = Int(value)
         }
+        stepper.doubleValue = Double(value)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: FontSizeField
+        weak var textField: NSTextField?
+        weak var stepper: NSStepper?
+
         init(_ parent: FontSizeField) { self.parent = parent }
+
+        @objc func stepperChanged(_ sender: NSStepper) {
+            let v = CGFloat(sender.doubleValue)
+            parent.value = v
+            textField?.integerValue = Int(v)
+        }
 
         func controlTextDidEndEditing(_ obj: Notification) {
             guard let tf = obj.object as? NSTextField else { return }
@@ -192,6 +206,7 @@ struct FontSizeField: NSViewRepresentable {
             let clamped = min(max(raw, parent.range.lowerBound), parent.range.upperBound)
             parent.value = clamped
             tf.integerValue = Int(clamped)
+            stepper?.doubleValue = Double(clamped)
         }
     }
 }
