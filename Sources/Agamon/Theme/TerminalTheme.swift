@@ -72,27 +72,44 @@ struct TerminalTheme {
 
     // MARK: - Theme catalogue
 
-    // Loaded once. Prefers Ghostty's bundle (463 themes); falls back to Swift-embedded
-    // themes if Ghostty is not installed.
+    // ~/.config/agamon/themes/ — created on first launch if absent.
+    static let userThemesDir: URL = FileManager.default
+        .homeDirectoryForCurrentUser
+        .appendingPathComponent(".config/agamon/themes")
+
+    // Loaded once at startup. Bundled themes first, then user themes on top
+    // (same name = user wins). Restart required to pick up new user files.
     static let all: [String: TerminalTheme] = loadAll()
     static let orderedNames: [String] = all.keys.sorted()
 
     private static func loadAll() -> [String: TerminalTheme] {
-        guard let dir = Bundle.module.url(forResource: "Themes", withExtension: nil),
-              let urls = try? FileManager.default.contentsOfDirectory(
-                  at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
-        else {
-            // Bundle resource missing — use embedded fallbacks
-            var themes: [String: TerminalTheme] = [:]
-            for (n, src) in bundledSources { if let t = parse(name: n, src) { themes[n] = t } }
-            return themes
-        }
         var themes: [String: TerminalTheme] = [:]
-        for url in urls {
-            let name = url.lastPathComponent
-            if let src = try? String(contentsOf: url, encoding: .utf8),
-               let t = parse(name: name, src) { themes[name] = t }
+
+        // 1. Bundled themes (463 from Ghostty, or Swift-embedded fallbacks)
+        if let dir = Bundle.module.url(forResource: "Themes", withExtension: nil),
+           let urls = try? FileManager.default.contentsOfDirectory(
+               at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
+            for url in urls {
+                let name = url.lastPathComponent
+                if let src = try? String(contentsOf: url, encoding: .utf8),
+                   let t = parse(name: name, src) { themes[name] = t }
+            }
+        } else {
+            for (n, src) in bundledSources { if let t = parse(name: n, src) { themes[n] = t } }
         }
+
+        // 2. User themes — create the directory and overlay on top of bundled
+        try? FileManager.default.createDirectory(at: userThemesDir,
+                                                  withIntermediateDirectories: true)
+        if let urls = try? FileManager.default.contentsOfDirectory(
+            at: userThemesDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
+            for url in urls {
+                let name = url.lastPathComponent
+                if let src = try? String(contentsOf: url, encoding: .utf8),
+                   let t = parse(name: name, src) { themes[name] = t }
+            }
+        }
+
         return themes
     }
 }
