@@ -49,6 +49,16 @@ struct AppearanceSettingsView: View {
 
             Section("Theme") {
                 ThemePickerSection()
+                HStack {
+                    Text("Custom themes: drop Ghostty-format files into your themes folder.")
+                        .font(.system(size: Theme.FontSize.xs))
+                        .foregroundStyle(Theme.Color.textTertiary)
+                    Spacer()
+                    Button("Open Folder") {
+                        NSWorkspace.shared.open(TerminalTheme.userThemesDir)
+                    }
+                    .buttonStyle(GhostButtonStyle())
+                }
             }
 
             Section("Font") {

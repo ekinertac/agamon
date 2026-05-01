@@ -99,8 +99,11 @@ struct TerminalTheme {
         }
 
         // 2. User themes — create the directory and overlay on top of bundled
+        let isNew = !FileManager.default.fileExists(atPath: userThemesDir.path)
         try? FileManager.default.createDirectory(at: userThemesDir,
                                                   withIntermediateDirectories: true)
+        if isNew { writeExampleTheme() }
+
         if let urls = try? FileManager.default.contentsOfDirectory(
             at: userThemesDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
             for url in urls {
@@ -111,6 +114,43 @@ struct TerminalTheme {
         }
 
         return themes
+    }
+
+    private static func writeExampleTheme() {
+        let dest = userThemesDir.appendingPathComponent("My Theme")
+        let content = """
+# My Theme — Agamon terminal color theme
+# Format is identical to Ghostty themes. Rename this file to change the theme name.
+# Drop any Ghostty-format .theme file (or file with no extension) into this folder
+# and restart Agamon to see it in the theme picker.
+
+# Terminal background and default text color
+background = #1e1e2e
+foreground = #cdd6f4
+
+# Cursor and selection
+cursor-color = #f5e0dc
+selection-background = #585b70
+
+# ANSI palette — 0-7 normal, 8-15 bright variants
+palette = 0=#45475a
+palette = 1=#f38ba8
+palette = 2=#a6e3a1
+palette = 3=#f9e2af
+palette = 4=#89b4fa
+palette = 5=#f5c2e7
+palette = 6=#94e2d5
+palette = 7=#bac2de
+palette = 8=#585b70
+palette = 9=#f38ba8
+palette = 10=#a6e3a1
+palette = 11=#f9e2af
+palette = 12=#89b4fa
+palette = 13=#f5c2e7
+palette = 14=#94e2d5
+palette = 15=#a6adc8
+"""
+        try? content.write(to: dest, atomically: true, encoding: .utf8)
     }
 }
 
