@@ -150,6 +150,85 @@ final class AgamonTerminalView: LocalProcessTerminalView {
         NotificationCenter.default.removeObserver(self)
     }
 
+    // MARK: - Cmd+click: open URLs, file paths, directories
+    // Events are intercepted in AppState.startModifierMonitor (leftMouseDown + mouseMoved
+    // + flagsChanged monitors) because SwiftTerm doesn't mark those NSView methods as open.
+
+    // Extract the token (word) from the terminal buffer at the given view-coordinate point.
+    // Uses Buffer.getChar(at:) (screen coords, public API) + CharData.getCharacter() (public).
+    // Stops at whitespace and common shell delimiters. Returns nil if nothing detectable found.
+    func tokenAt(_ point: NSPoint) -> String? {
+        let term = getTerminal()
+        let buf  = term.buffer
+        guard term.cols > 0, term.rows > 0 else { return nil }
+
+        // SwiftTerm subtracts the legacy scroller width from bounds.width for column math.
+        let scrollerW  = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+        let cellWidth  = (bounds.width - scrollerW) / CGFloat(term.cols)
+        let cellHeight = bounds.height / CGFloat(term.rows)
+        guard cellWidth > 0, cellHeight > 0 else { return nil }
+
+        let col = max(0, min(term.cols - 1, Int(point.x / cellWidth)))
+        let row = max(0, min(term.rows - 1, Int(point.y / cellHeight)))
+
+        // Build the visible line as a Character array using the public getChar(at:) API.
+        // getChar(at:) takes screen coordinates (row 0 = visible top) and adds yDisp internally.
+        var chars: [Character] = []
+        for c in 0..<term.cols {
+            chars.append(buf.getChar(at: Position(col: c, row: row)).getCharacter())
+        }
+
+        // Expand left/right from click column, stopping at shell delimiters.
+        let stops: Set<Character> = [" ", "\t", "\"", "'", "`", "(", ")", "[", "]",
+                                      "{", "}", "|", ";", "&", "<", ">", "\\"]
+        guard col < chars.count, !stops.contains(chars[col]) else { return nil }
+
+        var left = col, right = col
+        while left > 0             && !stops.contains(chars[left  - 1]) { left  -= 1 }
+        while right < chars.count - 1 && !stops.contains(chars[right + 1]) { right += 1 }
+
+        let token = String(chars[left...right]).trimmingCharacters(in: .whitespaces)
+        return token.isEmpty ? nil : token
+    }
+
+    func resolveAndOpen(_ token: String) {
+        // 1. http/https/ftp — open in default browser
+        if let url = URL(string: token),
+           let scheme = url.scheme,
+           ["http", "https", "ftp"].contains(scheme) {
+            NSWorkspace.shared.open(url)
+            return
+        }
+
+        // 2. file:// URL
+        if let url = URL(string: token), url.isFileURL {
+            openPath(url.path)
+            return
+        }
+
+        // 3. Absolute path or ~/...
+        if token.hasPrefix("/") || token.hasPrefix("~/") {
+            openPath((token as NSString).expandingTildeInPath)
+            return
+        }
+
+        // 4. Relative path tokens that contain a slash (e.g. src/main.swift, ./foo)
+        if token.contains("/") {
+            openPath((token as NSString).expandingTildeInPath)
+        }
+    }
+
+    private func openPath(_ path: String) {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else { return }
+        let url = URL(fileURLWithPath: path)
+        if isDir.boolValue {
+            NSWorkspace.shared.open(url)   // opens in Finder
+        } else {
+            NotificationCenter.default.post(name: .agamonOpenFile, object: url)
+        }
+    }
+
     override func layout() {
         let newSize = bounds.size
         // Guard before super.layout() — a zero-size call during re-parenting sends
