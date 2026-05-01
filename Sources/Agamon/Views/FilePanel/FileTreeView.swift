@@ -19,6 +19,7 @@ struct FileTreeView: View {
     @State private var rootItems: [FileItem] = []
     @State private var expandedPaths: Set<URL> = []
     @State private var childrenCache: [URL: [FileItem]] = [:]
+    @State private var loadingPaths: Set<URL> = []
     @State private var keyboardIndex: Int = 0
     @State private var highlightedFile: URL?
     @FocusState private var internalFocus: Bool
@@ -41,6 +42,7 @@ struct FileTreeView: View {
                         FileTreeRow(
                             item: item,
                             isExpanded: expandedPaths.contains(item.url),
+                            isLoading: loadingPaths.contains(item.url),
                             highlightedFile: $highlightedFile,
                             isKeyboardSelected: internalFocus && idx == keyboardIndex,
                             onToggle: { toggleExpanded(item) }
@@ -138,11 +140,19 @@ struct FileTreeView: View {
         if expandedPaths.contains(item.url) {
             // Remove this dir and all descendants so re-expanding starts fresh.
             expandedPaths = expandedPaths.filter { !$0.path.hasPrefix(item.url.path + "/") && $0 != item.url }
-        } else {
-            if childrenCache[item.url] == nil {
-                childrenCache[item.url] = FileItem.children(of: item.url, depth: item.depth + 1)
-            }
+        } else if childrenCache[item.url] != nil {
             expandedPaths.insert(item.url)
+        } else {
+            // Read directory off the main thread so the UI doesn't stall.
+            loadingPaths.insert(item.url)
+            Task.detached(priority: .userInitiated) {
+                let children = FileItem.children(of: item.url, depth: item.depth + 1)
+                await MainActor.run {
+                    childrenCache[item.url] = children
+                    loadingPaths.remove(item.url)
+                    expandedPaths.insert(item.url)
+                }
+            }
         }
     }
 
@@ -152,10 +162,15 @@ struct FileTreeView: View {
     }
 
     private func reload() {
-        rootItems = FileItem.children(of: URL(fileURLWithPath: rootPath), depth: 0)
         expandedPaths = []
         childrenCache = [:]
+        loadingPaths = []
         keyboardIndex = 0
+        let url = URL(fileURLWithPath: rootPath)
+        Task.detached(priority: .userInitiated) {
+            let items = FileItem.children(of: url, depth: 0)
+            await MainActor.run { rootItems = items }
+        }
     }
 }
 
@@ -166,6 +181,7 @@ struct FileTreeView: View {
 struct FileTreeRow: View {
     let item: FileItem
     let isExpanded: Bool
+    var isLoading: Bool = false
     @Binding var highlightedFile: URL?
     var isKeyboardSelected: Bool = false
     var onToggle: () -> Void = {}
@@ -182,10 +198,16 @@ struct FileTreeRow: View {
 
             Group {
                 if item.isDirectory {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(Theme.Color.textTertiary)
-                        .frame(width: 12)
+                    if isLoading {
+                        ProgressView()
+                            .scaleEffect(0.5)
+                            .frame(width: 12, height: 12)
+                    } else {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(Theme.Color.textTertiary)
+                            .frame(width: 12)
+                    }
                 } else {
                     Spacer().frame(width: 12)
                 }
