@@ -70,17 +70,31 @@ struct TerminalTheme {
         )
     }
 
-    // MARK: - Bundled themes
+    // MARK: - Theme catalogue
 
-    static let all: [String: TerminalTheme] = {
+    // Loaded once. Prefers Ghostty's bundle (463 themes); falls back to Swift-embedded
+    // themes if Ghostty is not installed.
+    static let all: [String: TerminalTheme] = loadAll()
+    static let orderedNames: [String] = all.keys.sorted()
+
+    private static func loadAll() -> [String: TerminalTheme] {
+        guard let dir = Bundle.module.url(forResource: "Themes", withExtension: nil),
+              let urls = try? FileManager.default.contentsOfDirectory(
+                  at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+        else {
+            // Bundle resource missing — use embedded fallbacks
+            var themes: [String: TerminalTheme] = [:]
+            for (n, src) in bundledSources { if let t = parse(name: n, src) { themes[n] = t } }
+            return themes
+        }
         var themes: [String: TerminalTheme] = [:]
-        for (n, src) in bundledSources {
-            if let t = parse(name: n, src) { themes[n] = t }
+        for url in urls {
+            let name = url.lastPathComponent
+            if let src = try? String(contentsOf: url, encoding: .utf8),
+               let t = parse(name: name, src) { themes[name] = t }
         }
         return themes
-    }()
-
-    static let orderedNames: [String] = bundledSources.map(\.0)
+    }
 }
 
 // MARK: - NSColor helpers
