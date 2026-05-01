@@ -19,9 +19,15 @@ struct SplitContainerView: View {
     var body: some View {
         GeometryReader { geo in
             let size = geo.size
+            let zoomed = appState.zoomedPaneID
             ZStack {
                 ForEach(pane.allLeafFrames()) { entry in
-                    let f = entry.frame
+                    // When zoomed: expand the target to fill the container, hide all others.
+                    // Opacity-only hide preserves pty sessions and avoids re-parenting.
+                    let isTarget = zoomed == nil || entry.id == zoomed
+                    let f: CGRect = (zoomed == entry.id)
+                        ? CGRect(x: 0, y: 0, width: 1, height: 1)
+                        : entry.frame
                     let w = max(1, f.width  * size.width)
                     let h = max(1, f.height * size.height)
                     TerminalPaneView(paneID: entry.id)
@@ -30,10 +36,15 @@ struct SplitContainerView: View {
                             x: f.minX * size.width  + w / 2,
                             y: f.minY * size.height + h / 2
                         )
+                        .opacity(isTarget ? 1 : 0)
+                        .allowsHitTesting(isTarget)
                 }
-                ForEach(pane.allDividerInfos()) { info in
-                    PaneDividerView(info: info, containerSize: size) { ratio in
-                        appState.updateSplitRatio(splitID: info.id, newRatio: ratio)
+                // Hide dividers while zoomed — they sit on top of the expanded pane otherwise.
+                if zoomed == nil {
+                    ForEach(pane.allDividerInfos()) { info in
+                        PaneDividerView(info: info, containerSize: size) { ratio in
+                            appState.updateSplitRatio(splitID: info.id, newRatio: ratio)
+                        }
                     }
                 }
             }

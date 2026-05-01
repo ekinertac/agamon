@@ -79,6 +79,10 @@ struct ShortcutHandler: View {
             Button("", action: appState.refocusActiveTerminal)
                 .keyboardShortcut(.escape, modifiers: [])
 
+            // Zoom focused pane to fill the container, or restore the split layout
+            Button("", action: appState.togglePaneZoom)
+                .keyboardShortcut(.return, modifiers: [.command, .shift])
+
             // Font size
             Button("", action: appState.increaseFontSize).keyboardShortcut("+", modifiers: .command)
             Button("", action: appState.increaseFontSize).keyboardShortcut("=", modifiers: .command)

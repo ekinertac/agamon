@@ -51,7 +51,9 @@ final class AppState {
     }
 
     // Restore the remembered pane for a tab, falling back to firstLeaf if it no longer exists.
+    // Clears zoom so the incoming tab always starts with the full split layout visible.
     private func restoreFocus(for tab: WorkTab) {
+        zoomedPaneID = nil
         let allLeaves = tab.rootPane.leafIDs()
         let paneID: UUID
         if let remembered = tabFocusMemory[tab.id], allLeaves.contains(remembered) {
@@ -80,6 +82,7 @@ final class AppState {
     var selectedProjectID: UUID?
     var selectedTabID: UUID?
     var focusedPaneID: UUID?
+    var zoomedPaneID: UUID? = nil    // non-nil while a pane is zoomed to fill the container
     var openFiles: [URL] = []        // ordered list of open editor tabs
     var selectedFile: URL? = nil     // currently active editor file
     var editorPanelVisible: Bool = false
@@ -290,6 +293,7 @@ final class AppState {
         else { return }
 
         let paneID = focusedPaneID ?? projects[pi].tabs[ti].rootPane.firstLeafID
+        zoomedPaneID = nil
         terminalViews.removeValue(forKey: paneID)
         TmuxController.shared.killSession(for: paneID)
         attentionPaneIDs.remove(paneID)
@@ -306,6 +310,16 @@ final class AppState {
             }
         } else {
             removeTab(tabID, from: projectID)
+        }
+    }
+
+    // MARK: - Pane Zoom
+
+    func togglePaneZoom() {
+        if zoomedPaneID != nil {
+            zoomedPaneID = nil
+        } else {
+            zoomedPaneID = focusedPaneID ?? selectedTab?.rootPane.firstLeafID
         }
     }
 

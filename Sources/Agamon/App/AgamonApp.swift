@@ -99,6 +99,10 @@ struct AgamonCommands: Commands {
             .keyboardShortcut("d", modifiers: [.command, .shift])
             .disabled(appState?.selectedTab == nil)
 
+            Button("Zoom Pane") { appState?.togglePaneZoom() }
+                .keyboardShortcut(.return, modifiers: [.command, .shift])
+                .disabled(appState?.selectedTab == nil)
+
             Divider()
 
             Button("Toggle File Panel") { appState?.toggleFilePanel() }
