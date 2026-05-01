@@ -15,7 +15,8 @@ struct SettingsView: View {
             TerminalSettingsView()
                 .tabItem { Label("Terminal", systemImage: "terminal.fill") }
         }
-        .frame(width: 460)
+        .frame(minWidth: 420, idealWidth: 520, maxWidth: .infinity,
+               minHeight: 300, maxHeight: .infinity)
         .preferredColorScheme(.dark)
     }
 }
@@ -74,11 +75,15 @@ struct AppearanceSettingsView: View {
 
 // MARK: - Theme picker
 
-// Searchable list for 463 bundled themes. Inline in the Form section so it
-// fits naturally in the grouped settings layout without a sheet.
+// Searchable list with keyboard navigation.
+// Cursor (cursorIndex) is independent from the applied selection so ↑↓ preview
+// before committing with Enter. Typing in the search field resets cursor to 0.
+// ↑↓ apply the theme immediately so you can arrow through to preview live.
 struct ThemePickerSection: View {
     @Environment(AppState.self) private var appState
     @State private var query: String = ""
+    @State private var cursorIndex: Int = 0
+    @FocusState private var listFocused: Bool
 
     private var filtered: [String] {
         query.isEmpty ? TerminalTheme.orderedNames
@@ -87,6 +92,7 @@ struct ThemePickerSection: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Search field
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(Theme.Color.textTertiary)
@@ -94,6 +100,9 @@ struct ThemePickerSection: View {
                 TextField("Search themes…", text: $query)
                     .textFieldStyle(.plain)
                     .font(.system(size: Theme.FontSize.sm))
+                    .onChange(of: query) {
+                        cursorIndex = 0
+                    }
                 if !query.isEmpty {
                     Button { query = "" } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -110,16 +119,47 @@ struct ThemePickerSection: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(filtered, id: \.self) { name in
-                            ThemeRow(name: name, isSelected: appState.selectedThemeName == name)
-                                .id(name)
-                                .onTapGesture { appState.selectedThemeName = name }
+                        ForEach(Array(filtered.enumerated()), id: \.element) { idx, name in
+                            ThemeRow(
+                                name: name,
+                                isSelected: appState.selectedThemeName == name,
+                                isCursor: idx == cursorIndex
+                            )
+                            .id(name)
+                            .onTapGesture {
+                                cursorIndex = idx
+                                appState.selectedThemeName = name
+                            }
                         }
                     }
                 }
-                .frame(height: 220)
+                .frame(minHeight: 200, maxHeight: .infinity)
+                .focusable()
+                .focusEffectDisabled()
+                .focused($listFocused)
+                .onKeyPress(.upArrow) {
+                    guard cursorIndex > 0 else { return .handled }
+                    cursorIndex -= 1
+                    let name = filtered[cursorIndex]
+                    appState.selectedThemeName = name
+                    proxy.scrollTo(name, anchor: .center)
+                    return .handled
+                }
+                .onKeyPress(.downArrow) {
+                    guard cursorIndex < filtered.count - 1 else { return .handled }
+                    cursorIndex += 1
+                    let name = filtered[cursorIndex]
+                    appState.selectedThemeName = name
+                    proxy.scrollTo(name, anchor: .center)
+                    return .handled
+                }
                 .onAppear {
-                    proxy.scrollTo(appState.selectedThemeName, anchor: .center)
+                    // Sync cursor to current selection
+                    if let idx = filtered.firstIndex(of: appState.selectedThemeName) {
+                        cursorIndex = idx
+                        proxy.scrollTo(appState.selectedThemeName, anchor: .center)
+                    }
+                    listFocused = true
                 }
                 .onChange(of: query) {
                     if let first = filtered.first { proxy.scrollTo(first, anchor: .top) }
@@ -134,13 +174,14 @@ struct ThemePickerSection: View {
 struct ThemeRow: View {
     let name: String
     let isSelected: Bool
+    var isCursor: Bool = false
     @State private var hovered = false
 
     var body: some View {
         HStack {
             Text(name)
                 .font(.system(size: Theme.FontSize.sm))
-                .foregroundStyle(isSelected ? Theme.Color.textPrimary : Theme.Color.textSecondary)
+                .foregroundStyle(isSelected || isCursor ? Theme.Color.textPrimary : Theme.Color.textSecondary)
             Spacer()
             if isSelected {
                 Image(systemName: "checkmark")
@@ -152,6 +193,7 @@ struct ThemeRow: View {
         .frame(height: 28)
         .background(
             isSelected ? Theme.Color.accentMuted :
+            isCursor   ? Theme.Color.accent.opacity(0.15) :
             hovered    ? Theme.Color.surfaceElevated : Color.clear
         )
         .onHover { hovered = $0 }
