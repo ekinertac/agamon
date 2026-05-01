@@ -15,74 +15,112 @@ struct SettingsView: View {
             TerminalSettingsView()
                 .tabItem { Label("Terminal", systemImage: "terminal.fill") }
         }
-        .frame(minWidth: 420, idealWidth: 520, maxWidth: .infinity,
-               minHeight: 300, maxHeight: .infinity)
+        .frame(minWidth: 480, minHeight: 680)
         .preferredColorScheme(.dark)
     }
 }
 
 // MARK: - Appearance
 
+// Intentionally NOT using Form — Form.formStyle(.grouped) adds its own ScrollView
+// which fights the theme list's scroll and prevents the window from resizing properly.
+// Fixed controls sit above the theme list; only the list itself scrolls.
 struct AppearanceSettingsView: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
         @Bindable var appState = appState
-        Form {
-            Section("Inactive Pane Dimming") {
-                Toggle("Dim inactive panes", isOn: $appState.dimInactivePanes)
+        VStack(alignment: .leading, spacing: 0) {
 
+            // ── Inactive pane dimming ─────────────────────────────────────
+            SettingsSectionHeader("Inactive Pane Dimming")
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                Toggle("Dim inactive panes", isOn: $appState.dimInactivePanes)
                 if appState.dimInactivePanes {
-                    LabeledContent("Amount") {
-                        HStack(spacing: Theme.Spacing.sm) {
-                            Slider(value: $appState.inactivePaneDimAmount, in: 0.05...0.9)
-                                .frame(width: 180)
-                            Text("\(Int(appState.inactivePaneDimAmount * 100))%")
-                                .font(.system(size: Theme.FontSize.xs, design: .monospaced))
-                                .foregroundStyle(Theme.Color.textSecondary)
-                                .frame(width: 36, alignment: .trailing)
-                        }
+                    HStack(spacing: Theme.Spacing.sm) {
+                        Text("Amount").settingsLabel()
+                        Slider(value: $appState.inactivePaneDimAmount, in: 0.05...0.9)
+                            .frame(maxWidth: 200)
+                        Text("\(Int(appState.inactivePaneDimAmount * 100))%")
+                            .font(.system(size: Theme.FontSize.xs, design: .monospaced))
+                            .foregroundStyle(Theme.Color.textSecondary)
+                            .frame(width: 36, alignment: .trailing)
                     }
                     Toggle("Only dim text (preserve background)", isOn: $appState.dimOnlyText)
                 }
             }
+            .settingsBlock()
 
-            Section("Theme") {
-                ThemePickerSection(
-                    darkTheme: $appState.selectedDarkThemeName,
-                    lightTheme: $appState.selectedLightThemeName
-                )
+            // ── Font ──────────────────────────────────────────────────────
+            SettingsSectionHeader("Font")
+            VStack(spacing: Theme.Spacing.sm) {
                 HStack {
-                    Text("Custom themes: drop Ghostty-format files into your themes folder.")
-                        .font(.system(size: Theme.FontSize.xs))
-                        .foregroundStyle(Theme.Color.textTertiary)
-                    Spacer()
-                    Button("Open Folder") {
-                        NSWorkspace.shared.open(TerminalTheme.userThemesDir)
-                    }
-                    .buttonStyle(GhostButtonStyle())
-                }
-            }
-
-            Section("Font") {
-                LabeledContent("Family") {
+                    Text("Family").settingsLabel()
                     TextField("e.g. JetBrainsMono Nerd Font Mono",
                               text: $appState.terminalFontFamily)
-                        .frame(width: 240)
                         .textFieldStyle(.roundedBorder)
                 }
-                LabeledContent("Size") {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        Stepper(value: $appState.terminalFontSize, in: 8...32, step: 1) {
-                            Text("\(Int(appState.terminalFontSize)) pt")
-                                .font(.system(size: Theme.FontSize.xs, design: .monospaced))
-                        }
+                HStack {
+                    Text("Size").settingsLabel()
+                    Stepper(value: $appState.terminalFontSize, in: 8...32, step: 1) {
+                        Text("\(Int(appState.terminalFontSize)) pt")
+                            .font(.system(size: Theme.FontSize.xs, design: .monospaced))
                     }
                 }
             }
+            .settingsBlock()
+
+            // ── Theme — fills remaining height ───────────────────────────
+            SettingsSectionHeader("Theme")
+            ThemePickerSection(
+                darkTheme: $appState.selectedDarkThemeName,
+                lightTheme: $appState.selectedLightThemeName
+            )
+            .frame(minHeight: 500, maxHeight: .infinity)
+            .padding(.horizontal, Theme.Spacing.md)
+
+            HStack {
+                Text("Drop Ghostty-format theme files into your themes folder and restart.")
+                    .font(.system(size: Theme.FontSize.xs))
+                    .foregroundStyle(Theme.Color.textTertiary)
+                Spacer()
+                Button("Open Folder") { NSWorkspace.shared.open(TerminalTheme.userThemesDir) }
+                    .buttonStyle(GhostButtonStyle())
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
         }
-        .formStyle(.grouped)
-        .padding(.bottom, Theme.Spacing.md)
+    }
+}
+
+// MARK: - Settings layout helpers
+
+private struct SettingsSectionHeader: View {
+    let title: String
+    init(_ title: String) { self.title = title }
+    var body: some View {
+        Text(title)
+            .font(.system(size: Theme.FontSize.xs, weight: .semibold))
+            .foregroundStyle(Theme.Color.textTertiary)
+            .textCase(.uppercase)
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.md)
+            .padding(.bottom, Theme.Spacing.xs)
+    }
+}
+
+private extension View {
+    func settingsLabel() -> some View {
+        self.font(.system(size: Theme.FontSize.sm))
+            .foregroundStyle(Theme.Color.textSecondary)
+            .frame(width: 80, alignment: .leading)
+    }
+    func settingsBlock() -> some View {
+        self.padding(Theme.Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.Color.surfaceElevated.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, Theme.Spacing.md)
     }
 }
 

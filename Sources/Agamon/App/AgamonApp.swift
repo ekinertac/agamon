@@ -27,6 +27,7 @@ struct AgamonApp: App {
             SettingsView()
                 .environment(appState)
         }
+        .windowResizability(.contentMinSize)
     }
 }
 
