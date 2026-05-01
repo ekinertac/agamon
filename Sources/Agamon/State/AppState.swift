@@ -13,6 +13,8 @@ extension Notification.Name {
     static let agamonFocusTerminal = Notification.Name("agamonFocusTerminal")
     // Posted with object: UUID (paneID) when a terminal receives a BEL character.
     static let agamonBell = Notification.Name("agamonBell")
+    // Posted (no object) to tell the focused editor to open its native find bar.
+    static let agamonOpenEditorFind = Notification.Name("agamonOpenEditorFind")
 }
 
 @Observable
@@ -96,6 +98,13 @@ final class AppState {
     var filePanelVisible: Bool = true
     var filePanelFocused: Bool = false
     var activeModifiers: NSEvent.ModifierFlags = []
+
+    // Terminal find bar: non-nil paneID means that pane is showing a search overlay.
+    // Cleared by refocusActiveTerminal() so tab switches / Escape / close all dismiss it.
+    var terminalSearchPaneID: UUID? = nil
+    // Set true when the editor NSTextView is first responder so openFind() can skip
+    // the terminal search path and let AppKit deliver Cmd+F natively to NSTextView.
+    var editorFocused: Bool = false
 
     var showsCtrlShortcuts: Bool { activeModifiers.contains(.control) }
     var showsCmdShortcuts:  Bool { activeModifiers.contains(.command) }
@@ -382,8 +391,9 @@ final class AppState {
     }
 
     // Posts a notification so the active terminal's NSView calls makeFirstResponder on itself.
-    // Uses NotificationCenter rather than updateNSView to avoid SwiftUI render-cycle timing races.
+    // Also closes terminal search if open — Escape, tab switch, and panel dismiss all flow here.
     func refocusActiveTerminal() {
+        terminalSearchPaneID = nil
         if focusedPaneID == nil {
             focusedPaneID = selectedTab?.rootPane.firstLeafID
         }
@@ -393,6 +403,24 @@ final class AppState {
 
     func focusEditor() {
         editorFocusRequestID &+= 1
+    }
+
+    // Cmd+F handler. When the editor text view has focus AppKit delivers Cmd+F to it
+    // natively (performKeyEquivalent on NSTextView) so we only need to handle the
+    // terminal case here.
+    func openFind() {
+        guard !editorFocused else { return }
+        // Toggle: pressing Cmd+F while search is already open for this pane closes it.
+        if terminalSearchPaneID != nil && terminalSearchPaneID == focusedPaneID {
+            closeTerminalSearch()
+            return
+        }
+        terminalSearchPaneID = focusedPaneID
+    }
+
+    func closeTerminalSearch() {
+        terminalSearchPaneID = nil
+        refocusActiveTerminal()
     }
 
     // Updates the ratio of a split node without persisting — ratios are session-only.

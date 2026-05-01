@@ -30,6 +30,11 @@ struct TerminalPaneView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.colorScheme) private var colorScheme
 
+    @State private var searchQuery: String = ""
+    @State private var searchMatchFound: Bool = true
+    @FocusState private var searchFocused: Bool
+    private var isSearchVisible: Bool { appState.terminalSearchPaneID == paneID }
+
     var isFocused: Bool { appState.focusedPaneID == paneID }
 
     private var activeThemeName: String {
@@ -79,8 +84,58 @@ struct TerminalPaneView: View {
                     .allowsHitTesting(false)
                     .animation(.easeInOut(duration: 0.2), value: appState.attentionPaneIDs.contains(paneID))
             }
+
+            // Terminal find bar — overlaid top-right, shown when this pane owns the search.
+            if isSearchVisible {
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        Spacer()
+                        TerminalSearchBar(
+                            query: $searchQuery,
+                            isFocused: $searchFocused,
+                            matchFound: searchMatchFound,
+                            onNext: { performSearch(forward: true) },
+                            onPrev: { performSearch(forward: false) },
+                            onClose: { appState.closeTerminalSearch() }
+                        )
+                        .padding(.trailing, Theme.Spacing.md)
+                        .padding(.top, Theme.Spacing.sm)
+                    }
+                    Spacer()
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .clipped()
+        .animation(.easeInOut(duration: 0.12), value: isSearchVisible)
+        .onChange(of: isSearchVisible) { _, visible in
+            if visible {
+                searchQuery = ""
+                searchMatchFound = true
+                DispatchQueue.main.async { searchFocused = true }
+            } else {
+                appState.terminalViews[paneID]?.clearSearch()
+            }
+        }
+        .onChange(of: searchQuery) { _, new in
+            guard isSearchVisible else { return }
+            if new.isEmpty {
+                appState.terminalViews[paneID]?.clearSearch()
+                searchMatchFound = true
+            } else {
+                // Small delay so partial keystrokes don't thrash the scrollback buffer.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    guard self.searchQuery == new else { return }
+                    self.searchMatchFound = self.appState.terminalViews[self.paneID]?.findNext(new) ?? true
+                }
+            }
+        }
+    }
+
+    private func performSearch(forward: Bool) {
+        guard !searchQuery.isEmpty, let tv = appState.terminalViews[paneID] else { return }
+        let found = forward ? tv.findNext(searchQuery) : tv.findPrevious(searchQuery)
+        searchMatchFound = found
     }
 }
 
@@ -260,10 +315,7 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
         if !family.isEmpty,
            let font = NSFontManager.shared.font(withFamily: family,
                                                 traits: [], weight: 5, size: size) {
-            // Apply the requested weight face if available
             if !fontWeight.isEmpty, fontWeight != "Regular" {
-                let weighted = NSFontManager.shared.font(withFamily: family,
-                                                         traits: [], weight: 5, size: size)
                 let desc = NSFontDescriptor(fontAttributes: [
                     .family: family, .face: fontWeight
                 ])

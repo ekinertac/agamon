@@ -29,7 +29,8 @@ struct FileEditorView: View {
                 text: $content,
                 onChange: { isDirty = true },
                 focusRequestID: appState.editorFocusRequestID,
-                fileExtension: url.pathExtension
+                fileExtension: url.pathExtension,
+                onFocusChange: { focused in appState.editorFocused = focused }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -80,8 +81,23 @@ struct FileEditorView: View {
 
 // Marker subclass used by the NSEvent keyDown monitor in AppState to distinguish
 // the editor text view from terminals (AgamonTerminalView) and sheet text fields.
-// No extra logic — type identity is the only requirement.
-final class AgamonEditorTextView: NSTextView {}
+// Also reports first-responder changes via onFocusChange so AppState can gate
+// the terminal search path in openFind() (Cmd+F) when the editor has keyboard focus.
+final class AgamonEditorTextView: NSTextView {
+    var onFocusChange: ((Bool) -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let r = super.becomeFirstResponder()
+        if r { onFocusChange?(true) }
+        return r
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let r = super.resignFirstResponder()
+        if r { onFocusChange?(false) }
+        return r
+    }
+}
 
 // MARK: - NSTextView wrapper
 
@@ -95,6 +111,7 @@ struct EditorTextView: NSViewRepresentable {
     // the same call) is still honored.
     var focusRequestID: Int
     var fileExtension: String
+    var onFocusChange: ((Bool) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -123,6 +140,10 @@ struct EditorTextView: NSViewRepresentable {
         // isRichText must be true for NSTextStorage attribute changes to persist between keystrokes.
         // typingAttributes ensures new characters the user types get the base style, not a stale color.
         textView.isRichText = true
+        // Native macOS inline find bar — Cmd+F is delivered to NSTextView via performKeyEquivalent
+        // before SwiftUI's keyboardShortcut buttons see it, so no extra routing is needed.
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
         textView.isEditable = true
         textView.isSelectable = true
         textView.allowsUndo = true
@@ -140,6 +161,7 @@ struct EditorTextView: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isAutomaticLinkDetectionEnabled = false
 
+        textView.onFocusChange = onFocusChange
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
         scrollView.documentView = textView

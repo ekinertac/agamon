@@ -75,9 +75,13 @@ struct ShortcutHandler: View {
             Button("") { appState.focusPane(direction: .down) }
                 .keyboardShortcut(.downArrow, modifiers: [.command, .option])
 
-            // Escape: return focus to the active terminal from anywhere
+            // Escape: return focus to the active terminal from anywhere (also closes terminal search)
             Button("", action: appState.refocusActiveTerminal)
                 .keyboardShortcut(.escape, modifiers: [])
+
+            // Find: Cmd+F opens terminal search overlay (editor NSTextView handles it natively)
+            Button("", action: appState.openFind)
+                .keyboardShortcut("f", modifiers: .command)
 
             // Zoom focused pane to fill the container, or restore the split layout
             Button("", action: appState.togglePaneZoom)

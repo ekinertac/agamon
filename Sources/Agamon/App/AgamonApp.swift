@@ -107,6 +107,11 @@ struct AgamonCommands: Commands {
 
             Button("Toggle File Panel") { appState?.toggleFilePanel() }
                 .keyboardShortcut("e", modifiers: .command)
+
+            Divider()
+
+            Button("Find...") { appState?.openFind() }
+                .keyboardShortcut("f", modifiers: .command)
         }
     }
 }
