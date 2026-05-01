@@ -316,8 +316,7 @@ final class AppState {
     func resetFontSize()    { setFontSize(13) }
 
     private func setFontSize(_ size: CGFloat) {
-        terminalFontSize = size
-        UserDefaults.standard.set(Double(size), forKey: "terminalFontSize")
+        terminalFontSize = size  // didSet persists to UserDefaults
     }
 
     // MARK: - Editor Panel
