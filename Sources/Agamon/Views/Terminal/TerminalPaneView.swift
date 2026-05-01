@@ -233,6 +233,8 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
         tv.nativeForegroundColor = theme.foreground
         tv.layer?.backgroundColor = theme.background.cgColor
         tv.caretColor = theme.cursor
+        tv.caretTextColor = theme.cursorText
+        if let selBg = theme.selectionBackground { tv.selectedTextBackgroundColor = selBg }
         tv.font = nerdFont(size: fontSize)
         tv.installColors(theme.palette)
         tv.appliedThemeName = themeName

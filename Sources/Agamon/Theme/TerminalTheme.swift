@@ -19,7 +19,9 @@ struct TerminalTheme {
     let background: NSColor
     let foreground: NSColor
     let cursor: NSColor
-    let selectionBackground: NSColor?
+    let cursorText: NSColor?         // cursor-text  → caretTextColor
+    let selectionBackground: NSColor? // selection-background → selectedTextBackgroundColor
+    // selection-foreground has no SwiftTerm API — parsed and discarded
     let palette: [SwiftTerm.Color]   // exactly 16 entries
 
     // MARK: - Parser
@@ -28,6 +30,7 @@ struct TerminalTheme {
         var bg: NSColor?
         var fg: NSColor?
         var cursor: NSColor?
+        var cursorText: NSColor?
         var selBg: NSColor?
         var paletteMap = [Int: NSColor]()
 
@@ -39,12 +42,13 @@ struct TerminalTheme {
             let value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
 
             switch key {
-            case "background":            bg     = NSColor(ghosttyHex: value)
-            case "foreground":            fg     = NSColor(ghosttyHex: value)
-            case "cursor-color":          cursor = NSColor(ghosttyHex: value)
-            case "selection-background":  selBg  = NSColor(ghosttyHex: value)
+            case "background":            bg         = NSColor(ghosttyHex: value)
+            case "foreground":            fg         = NSColor(ghosttyHex: value)
+            case "cursor-color":          cursor     = NSColor(ghosttyHex: value)
+            case "cursor-text":           cursorText = NSColor(ghosttyHex: value)
+            case "selection-background":  selBg      = NSColor(ghosttyHex: value)
+            case "selection-foreground":  break  // no SwiftTerm API
             case "palette":
-                // "0=#rrggbb"
                 if let inner = value.firstIndex(of: "=") {
                     let idx = value[value.startIndex..<inner].trimmingCharacters(in: .whitespaces)
                     let hex = value[value.index(after: inner)...].trimmingCharacters(in: .whitespaces)
@@ -65,6 +69,7 @@ struct TerminalTheme {
             background: background,
             foreground: foreground,
             cursor: cursor ?? foreground,
+            cursorText: cursorText,
             selectionBackground: selBg,
             palette: swiftTermPalette
         )
