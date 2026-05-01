@@ -28,8 +28,13 @@ import AppKit
 struct TerminalPaneView: View {
     let paneID: UUID
     @Environment(AppState.self) private var appState
+    @Environment(\.colorScheme) private var colorScheme
 
     var isFocused: Bool { appState.focusedPaneID == paneID }
+
+    private var activeThemeName: String {
+        colorScheme == .dark ? appState.selectedDarkThemeName : appState.selectedLightThemeName
+    }
 
     private var rootPath: String {
         appState.selectedProject?.rootPath
@@ -51,7 +56,7 @@ struct TerminalPaneView: View {
                 fontFamily: appState.terminalFontFamily,
                 fontSize: appState.terminalFontSize,
                 isActive: isFocused,
-                themeName: appState.selectedThemeName
+                themeName: activeThemeName
             )
             .padding(.trailing, -scrollerReservedWidth)
 

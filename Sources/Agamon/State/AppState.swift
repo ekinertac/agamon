@@ -105,8 +105,12 @@ final class AppState {
         didSet { UserDefaults.standard.set(terminalFontFamily, forKey: "terminalFontFamily") }
     }
 
-    var selectedThemeName: String = UserDefaults.standard.string(forKey: "selectedThemeName") ?? "Catppuccin Mocha" {
-        didSet { UserDefaults.standard.set(selectedThemeName, forKey: "selectedThemeName") }
+    var selectedDarkThemeName: String = UserDefaults.standard.string(forKey: "selectedDarkThemeName") ?? "Catppuccin Mocha" {
+        didSet { UserDefaults.standard.set(selectedDarkThemeName, forKey: "selectedDarkThemeName") }
+    }
+
+    var selectedLightThemeName: String = UserDefaults.standard.string(forKey: "selectedLightThemeName") ?? "GitHub Light Default" {
+        didSet { UserDefaults.standard.set(selectedLightThemeName, forKey: "selectedLightThemeName") }
     }
 
     var shellPath: String = {

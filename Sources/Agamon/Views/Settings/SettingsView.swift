@@ -48,7 +48,10 @@ struct AppearanceSettingsView: View {
             }
 
             Section("Theme") {
-                ThemePickerSection()
+                ThemePickerSection(
+                    darkTheme: $appState.selectedDarkThemeName,
+                    lightTheme: $appState.selectedLightThemeName
+                )
                 HStack {
                     Text("Custom themes: drop Ghostty-format files into your themes folder.")
                         .font(.system(size: Theme.FontSize.xs))
@@ -85,15 +88,22 @@ struct AppearanceSettingsView: View {
 
 // MARK: - Theme picker
 
-// Searchable list with keyboard navigation.
-// Cursor (cursorIndex) is independent from the applied selection so ↑↓ preview
-// before committing with Enter. Typing in the search field resets cursor to 0.
-// ↑↓ apply the theme immediately so you can arrow through to preview live.
+// Searchable list with keyboard navigation and separate dark/light bindings.
+// A segmented control at the top switches which binding is active. Cursor is
+// independent from the committed selection so ↑↓ applies the theme live for
+// preview. Typing in the search field resets cursor to 0.
 struct ThemePickerSection: View {
-    @Environment(AppState.self) private var appState
+    @Binding var darkTheme: String
+    @Binding var lightTheme: String
+    @Environment(\.colorScheme) private var colorScheme
+
+    @State private var editingDark: Bool = true
     @State private var query: String = ""
     @State private var cursorIndex: Int = 0
     @FocusState private var listFocused: Bool
+
+    private var selection: Binding<String> { editingDark ? $darkTheme : $lightTheme }
+    private var currentName: String { editingDark ? darkTheme : lightTheme }
 
     private var filtered: [String] {
         query.isEmpty ? TerminalTheme.orderedNames
@@ -102,6 +112,19 @@ struct ThemePickerSection: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Dark / Light segment
+            Picker("", selection: $editingDark) {
+                Text("Dark").tag(true)
+                Text("Light").tag(false)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, Theme.Spacing.sm)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
+            .onChange(of: editingDark) {
+                syncCursor(proxy: nil)
+            }
+
             // Search field
             HStack {
                 Image(systemName: "magnifyingglass")
@@ -110,13 +133,10 @@ struct ThemePickerSection: View {
                 TextField("Search themes…", text: $query)
                     .textFieldStyle(.plain)
                     .font(.system(size: Theme.FontSize.sm))
-                    .onChange(of: query) {
-                        cursorIndex = 0
-                    }
+                    .onChange(of: query) { cursorIndex = 0 }
                 if !query.isEmpty {
                     Button { query = "" } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(Theme.Color.textTertiary)
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.Color.textTertiary)
                     }
                     .buttonStyle(.plain)
                 }
@@ -132,13 +152,13 @@ struct ThemePickerSection: View {
                         ForEach(Array(filtered.enumerated()), id: \.element) { idx, name in
                             ThemeRow(
                                 name: name,
-                                isSelected: appState.selectedThemeName == name,
+                                isSelected: currentName == name,
                                 isCursor: idx == cursorIndex
                             )
                             .id(name)
                             .onTapGesture {
                                 cursorIndex = idx
-                                appState.selectedThemeName = name
+                                selection.wrappedValue = name
                             }
                         }
                     }
@@ -151,7 +171,7 @@ struct ThemePickerSection: View {
                     guard cursorIndex > 0 else { return .handled }
                     cursorIndex -= 1
                     let name = filtered[cursorIndex]
-                    appState.selectedThemeName = name
+                    selection.wrappedValue = name
                     proxy.scrollTo(name, anchor: .center)
                     return .handled
                 }
@@ -159,17 +179,17 @@ struct ThemePickerSection: View {
                     guard cursorIndex < filtered.count - 1 else { return .handled }
                     cursorIndex += 1
                     let name = filtered[cursorIndex]
-                    appState.selectedThemeName = name
+                    selection.wrappedValue = name
                     proxy.scrollTo(name, anchor: .center)
                     return .handled
                 }
                 .onAppear {
-                    // Sync cursor to current selection
-                    if let idx = filtered.firstIndex(of: appState.selectedThemeName) {
-                        cursorIndex = idx
-                        proxy.scrollTo(appState.selectedThemeName, anchor: .center)
-                    }
+                    editingDark = (colorScheme == .dark)
+                    syncCursor(proxy: proxy)
                     listFocused = true
+                }
+                .onChange(of: editingDark) {
+                    syncCursor(proxy: proxy)
                 }
                 .onChange(of: query) {
                     if let first = filtered.first { proxy.scrollTo(first, anchor: .top) }
@@ -178,6 +198,14 @@ struct ThemePickerSection: View {
         }
         .background(Theme.Color.surfaceElevated.opacity(0.4))
         .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func syncCursor(proxy: ScrollViewProxy?) {
+        query = ""
+        if let idx = TerminalTheme.orderedNames.firstIndex(of: currentName) {
+            cursorIndex = idx
+            proxy?.scrollTo(currentName, anchor: .center)
+        }
     }
 }
 
