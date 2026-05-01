@@ -1,9 +1,10 @@
-// Settings window opened by ⌘, (registered automatically by the Settings scene in AgamonApp).
-// Two tabs: Appearance (dimming, font) and Terminal (shell).
-// All settings are stored in UserDefaults and kept in sync through AppState's @Observable
-// properties, so every terminal pane reacts to changes without a restart.
+// Settings window — ⌘, registered automatically by the Settings scene in AgamonApp.
+// Two tabs: Appearance (dimming, font, theme) and Terminal (shell).
+// Uses Form.formStyle(.grouped) for proper macOS HIG appearance throughout.
+// The theme picker has a fixed 500px height so it scrolls independently within
+// the Form's own scroll — both can coexist when the inner list has a known size.
 // Related: AppState.swift (owns all settings state), TerminalPaneView.swift (consumes them),
-//          AgamonApp.swift (declares the Settings scene).
+//          AgamonApp.swift (declares the Settings scene + windowResizability).
 
 import SwiftUI
 
@@ -22,105 +23,65 @@ struct SettingsView: View {
 
 // MARK: - Appearance
 
-// Intentionally NOT using Form — Form.formStyle(.grouped) adds its own ScrollView
-// which fights the theme list's scroll and prevents the window from resizing properly.
-// Fixed controls sit above the theme list; only the list itself scrolls.
 struct AppearanceSettingsView: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
         @Bindable var appState = appState
-        VStack(alignment: .leading, spacing: 0) {
-
-            // ── Inactive pane dimming ─────────────────────────────────────
-            SettingsSectionHeader("Inactive Pane Dimming")
-            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+        Form {
+            Section("Inactive Pane Dimming") {
                 Toggle("Dim inactive panes", isOn: $appState.dimInactivePanes)
                 if appState.dimInactivePanes {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        Text("Amount").settingsLabel()
-                        Slider(value: $appState.inactivePaneDimAmount, in: 0.05...0.9)
-                            .frame(maxWidth: 200)
-                        Text("\(Int(appState.inactivePaneDimAmount * 100))%")
-                            .font(.system(size: Theme.FontSize.xs, design: .monospaced))
-                            .foregroundStyle(Theme.Color.textSecondary)
-                            .frame(width: 36, alignment: .trailing)
+                    LabeledContent("Amount") {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Slider(value: $appState.inactivePaneDimAmount, in: 0.05...0.9)
+                                .frame(width: 180)
+                            Text("\(Int(appState.inactivePaneDimAmount * 100))%")
+                                .font(.system(size: Theme.FontSize.xs, design: .monospaced))
+                                .foregroundStyle(Theme.Color.textSecondary)
+                                .frame(width: 36, alignment: .trailing)
+                        }
                     }
                     Toggle("Only dim text (preserve background)", isOn: $appState.dimOnlyText)
                 }
             }
-            .settingsBlock()
 
-            // ── Font ──────────────────────────────────────────────────────
-            SettingsSectionHeader("Font")
-            VStack(spacing: Theme.Spacing.sm) {
-                HStack {
-                    Text("Family").settingsLabel()
+            Section("Font") {
+                LabeledContent("Family") {
                     TextField("e.g. JetBrainsMono Nerd Font Mono",
                               text: $appState.terminalFontFamily)
+                        .frame(width: 240)
                         .textFieldStyle(.roundedBorder)
                 }
-                HStack {
-                    Text("Size").settingsLabel()
+                LabeledContent("Size") {
                     Stepper(value: $appState.terminalFontSize, in: 8...32, step: 1) {
                         Text("\(Int(appState.terminalFontSize)) pt")
                             .font(.system(size: Theme.FontSize.xs, design: .monospaced))
                     }
                 }
             }
-            .settingsBlock()
 
-            // ── Theme — fills remaining height ───────────────────────────
-            SettingsSectionHeader("Theme")
-            ThemePickerSection(
-                darkTheme: $appState.selectedDarkThemeName,
-                lightTheme: $appState.selectedLightThemeName
-            )
-            .frame(minHeight: 500, maxHeight: .infinity)
-            .padding(.horizontal, Theme.Spacing.md)
+            Section("Theme") {
+                ThemePickerSection(
+                    darkTheme: $appState.selectedDarkThemeName,
+                    lightTheme: $appState.selectedLightThemeName
+                )
+                // Fixed height: Form knows the total content size so both the outer
+                // Form scroll and the inner theme list scroll work independently.
+                .frame(height: 500)
+                .listRowInsets(EdgeInsets())
 
-            HStack {
-                Text("Drop Ghostty-format theme files into your themes folder and restart.")
-                    .font(.system(size: Theme.FontSize.xs))
-                    .foregroundStyle(Theme.Color.textTertiary)
-                Spacer()
-                Button("Open Folder") { NSWorkspace.shared.open(TerminalTheme.userThemesDir) }
-                    .buttonStyle(GhostButtonStyle())
+                HStack {
+                    Text("Drop Ghostty-format theme files into your themes folder and restart.")
+                        .font(.system(size: Theme.FontSize.xs))
+                        .foregroundStyle(Theme.Color.textTertiary)
+                    Spacer()
+                    Button("Open Folder") { NSWorkspace.shared.open(TerminalTheme.userThemesDir) }
+                        .buttonStyle(GhostButtonStyle())
+                }
             }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
         }
-    }
-}
-
-// MARK: - Settings layout helpers
-
-private struct SettingsSectionHeader: View {
-    let title: String
-    init(_ title: String) { self.title = title }
-    var body: some View {
-        Text(title)
-            .font(.system(size: Theme.FontSize.xs, weight: .semibold))
-            .foregroundStyle(Theme.Color.textTertiary)
-            .textCase(.uppercase)
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.top, Theme.Spacing.md)
-            .padding(.bottom, Theme.Spacing.xs)
-    }
-}
-
-private extension View {
-    func settingsLabel() -> some View {
-        self.font(.system(size: Theme.FontSize.sm))
-            .foregroundStyle(Theme.Color.textSecondary)
-            .frame(width: 80, alignment: .leading)
-    }
-    func settingsBlock() -> some View {
-        self.padding(Theme.Spacing.sm)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.Color.surfaceElevated.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .padding(.horizontal, Theme.Spacing.md)
+        .formStyle(.grouped)
     }
 }
 
@@ -159,9 +120,6 @@ struct ThemePickerSection: View {
             .padding(.horizontal, Theme.Spacing.sm)
             .padding(.top, 8)
             .padding(.bottom, 6)
-            .onChange(of: editingDark) {
-                syncCursor(proxy: nil)
-            }
 
             // Search field
             HStack {
@@ -201,7 +159,6 @@ struct ThemePickerSection: View {
                         }
                     }
                 }
-                .frame(minHeight: 200, maxHeight: .infinity)
                 .focusable()
                 .focusEffectDisabled()
                 .focused($listFocused)
@@ -226,9 +183,7 @@ struct ThemePickerSection: View {
                     syncCursor(proxy: proxy)
                     listFocused = true
                 }
-                .onChange(of: editingDark) {
-                    syncCursor(proxy: proxy)
-                }
+                .onChange(of: editingDark) { syncCursor(proxy: proxy) }
                 .onChange(of: query) {
                     if let first = filtered.first { proxy.scrollTo(first, anchor: .top) }
                 }
