@@ -171,6 +171,7 @@ struct FileTreeRow: View {
 
     @Environment(AppState.self) private var appState
     @State private var isHovered = false
+    @State private var lastTapTime: Date = .distantPast
 
     private var isOpen: Bool        { appState.selectedFile == item.url }
     private var isHighlighted: Bool { highlightedFile == item.url || isOpen }
@@ -212,16 +213,20 @@ struct FileTreeRow: View {
         .frame(height: 24)
         .background(rowBackground)
         .onHover { isHovered = $0 }
-        .onTapGesture(count: 2) {
-            if !item.isDirectory {
-                highlightedFile = item.url
+        .onTapGesture {
+            // Single handler avoids SwiftUI's ~300ms disambiguation delay that
+            // count:2 + count:1 stacking introduces on every single tap.
+            let now = Date()
+            let isDouble = now.timeIntervalSince(lastTapTime) < NSEvent.doubleClickInterval
+            lastTapTime = now
+            if item.isDirectory {
+                onToggle()
+            } else if isDouble {
                 appState.openFile(item.url)
                 appState.focusEditor()
+            } else {
+                highlightedFile = item.url
             }
-        }
-        .onTapGesture(count: 1) {
-            if item.isDirectory { onToggle() }
-            else { highlightedFile = item.url }
         }
     }
 
