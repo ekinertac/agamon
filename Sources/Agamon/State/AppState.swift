@@ -13,8 +13,6 @@ extension Notification.Name {
     static let agamonFocusTerminal = Notification.Name("agamonFocusTerminal")
     // Posted with object: UUID (paneID) when a terminal receives a BEL character.
     static let agamonBell = Notification.Name("agamonBell")
-    // Posted with object: URL (file URL) when a terminal Cmd+click detects a file path.
-    static let agamonOpenFile = Notification.Name("agamonOpenFile")
 }
 
 @Observable
@@ -456,18 +454,12 @@ final class AppState {
         NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.activeModifiers = event.modifierFlags
                 .intersection([.command, .control, .option, .shift])
-            // Update cursor immediately when Cmd is pressed or released over a terminal.
-            if let window = event.window {
-                let pt = window.mouseLocationOutsideOfEventStream
-                AppState.updateLinkCursor(in: window, at: pt, mods: event.modifierFlags)
-            }
             return event
         }
 
         // Hit-test on every left click to find which AgamonTerminalView (and therefore
         // which pane) was clicked. SwiftTerm's NSView consumes mouse events so onTapGesture
         // never fires — intercepting here at the event level is the reliable alternative.
-        // Cmd+click: if a URL/path token is under the cursor, open it and consume the event.
         NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let self, let window = event.window else { return event }
             let point = event.locationInWindow
@@ -477,25 +469,10 @@ final class AppState {
                     self.focusedPaneID = id
                     self.attentionPaneIDs.remove(id)
                     if let tabID = self.selectedTabID { self.tabFocusMemory[tabID] = id }
-                    if event.modifierFlags.contains(.command) {
-                        let viewPt = terminal.convert(point, from: nil)
-                        if let token = terminal.tokenAt(viewPt) {
-                            terminal.resolveAndOpen(token)
-                            return nil   // consume — don't forward to SwiftTerm
-                        }
-                    }
                     break
                 }
                 view = v.superview
             }
-            return event
-        }
-
-        // Pointing-hand cursor while hovering over a detectable token with Cmd held.
-        NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { event in
-            guard let window = event.window else { return event }
-            AppState.updateLinkCursor(in: window, at: event.locationInWindow,
-                                      mods: event.modifierFlags)
             return event
         }
 
@@ -561,31 +538,6 @@ final class AppState {
             guard self.focusedPaneID != paneID else { return }
             self.attentionPaneIDs.insert(paneID)
         }
-
-        // Cmd+click on a file path in any terminal — open in the built-in editor.
-        NotificationCenter.default.addObserver(
-            forName: .agamonOpenFile, object: nil, queue: .main
-        ) { [weak self] note in
-            guard let url = note.object as? URL else { return }
-            self?.openFile(url)
-        }
-    }
-
-    // Called from the flagsChanged and mouseMoved monitors to show/hide the link cursor.
-    static func updateLinkCursor(in window: NSWindow, at point: NSPoint,
-                                  mods: NSEvent.ModifierFlags) {
-        guard mods.contains(.command) else { NSCursor.iBeam.set(); return }
-        var view: NSView? = window.contentView?.hitTest(point)
-        while let v = view {
-            if let terminal = v as? AgamonTerminalView {
-                let vp = terminal.convert(point, from: nil)
-                if let _ = terminal.tokenAt(vp) { NSCursor.pointingHand.set(); return }
-                break
-            }
-            view = v.superview
-        }
-        // Cmd held but no token — iBeam would override SwiftTerm's own cursor logic,
-        // so only set it explicitly when we were previously showing pointingHand.
     }
 
     func load() {
