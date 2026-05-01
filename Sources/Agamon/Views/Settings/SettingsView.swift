@@ -13,6 +13,8 @@ struct SettingsView: View {
         TabView {
             AppearanceSettingsView()
                 .tabItem { Label("Appearance", systemImage: "paintbrush.fill") }
+            TextSettingsView()
+                .tabItem { Label("Text", systemImage: "textformat") }
             TerminalSettingsView()
                 .tabItem { Label("Terminal", systemImage: "terminal.fill") }
         }
@@ -46,21 +48,6 @@ struct AppearanceSettingsView: View {
                 }
             }
 
-            Section("Font") {
-                LabeledContent("Family") {
-                    TextField("e.g. JetBrainsMono Nerd Font Mono",
-                              text: $appState.terminalFontFamily)
-                        .frame(width: 240)
-                        .textFieldStyle(.roundedBorder)
-                }
-                LabeledContent("Size") {
-                    Stepper(value: $appState.terminalFontSize, in: 8...32, step: 1) {
-                        Text("\(Int(appState.terminalFontSize)) pt")
-                            .font(.system(size: Theme.FontSize.xs, design: .monospaced))
-                    }
-                }
-            }
-
             Section("Theme") {
                 ThemePickerSection(
                     darkTheme: $appState.selectedDarkThemeName,
@@ -82,6 +69,186 @@ struct AppearanceSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+// MARK: - Text settings
+
+struct TextSettingsView: View {
+    @Environment(AppState.self) private var appState
+
+    // Available face names for the currently selected font family.
+    private var availableWeights: [String] {
+        guard !appState.terminalFontFamily.isEmpty,
+              let members = NSFontManager.shared.availableMembers(
+                  ofFontFamily: appState.terminalFontFamily)
+        else { return ["Regular"] }
+        return members.compactMap { $0[1] as? String }
+    }
+
+    var body: some View {
+        @Bindable var appState = appState
+        Form {
+            Section("Font Family") {
+                FontPickerSection(selectedFamily: $appState.terminalFontFamily)
+                    .frame(height: 400)
+                    .listRowInsets(EdgeInsets())
+            }
+
+            Section("Size & Weight") {
+                LabeledContent("Size") {
+                    Picker("", selection: $appState.terminalFontSize) {
+                        ForEach([10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24], id: \.self) { size in
+                            Text("\(size) pt").tag(CGFloat(size))
+                        }
+                    }
+                    .frame(width: 90)
+                }
+                LabeledContent("Weight") {
+                    Picker("", selection: $appState.terminalFontWeight) {
+                        ForEach(availableWeights, id: \.self) { face in
+                            Text(face).tag(face)
+                        }
+                    }
+                    .frame(width: 160)
+                    .onChange(of: appState.terminalFontFamily) {
+                        // Reset to Regular when switching font families
+                        if !availableWeights.contains(appState.terminalFontWeight) {
+                            appState.terminalFontWeight = availableWeights.first ?? "Regular"
+                        }
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Font picker
+
+// Lists only monospace font families (filtered via NSFontManager symbolic traits).
+// Same searchable + keyboard-nav pattern as ThemePickerSection.
+struct FontPickerSection: View {
+    @Binding var selectedFamily: String
+    @State private var query: String = ""
+    @State private var cursorIndex: Int = 0
+    @FocusState private var listFocused: Bool
+
+    private static let families: [String] = {
+        let mgr = NSFontManager.shared
+        return mgr.availableFontFamilies.filter { family in
+            guard let members = mgr.availableMembers(ofFontFamily: family),
+                  let first = members.first,
+                  let name = first[0] as? String,
+                  let font = NSFont(name: name, size: 13) else { return false }
+            return font.fontDescriptor.symbolicTraits.contains(.monoSpace)
+        }
+    }()
+
+    private var filtered: [String] {
+        query.isEmpty ? Self.families
+            : Self.families.filter { $0.localizedCaseInsensitiveContains(query) }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(Theme.Color.textTertiary)
+                    .font(.system(size: Theme.FontSize.sm))
+                TextField("Search fonts…", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: Theme.FontSize.sm))
+                    .onChange(of: query) { cursorIndex = 0 }
+                if !query.isEmpty {
+                    Button { query = "" } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.Color.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.sm)
+            .padding(.vertical, 6)
+
+            Divider()
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(filtered.enumerated()), id: \.element) { idx, family in
+                            FontRow(
+                                family: family,
+                                isSelected: selectedFamily == family,
+                                isCursor: idx == cursorIndex
+                            )
+                            .id(family)
+                            .onTapGesture {
+                                cursorIndex = idx
+                                selectedFamily = family
+                            }
+                        }
+                    }
+                }
+                .focusable()
+                .focusEffectDisabled()
+                .focused($listFocused)
+                .onKeyPress(.upArrow) {
+                    guard cursorIndex > 0 else { return .handled }
+                    cursorIndex -= 1
+                    selectedFamily = filtered[cursorIndex]
+                    proxy.scrollTo(filtered[cursorIndex], anchor: .center)
+                    return .handled
+                }
+                .onKeyPress(.downArrow) {
+                    guard cursorIndex < filtered.count - 1 else { return .handled }
+                    cursorIndex += 1
+                    selectedFamily = filtered[cursorIndex]
+                    proxy.scrollTo(filtered[cursorIndex], anchor: .center)
+                    return .handled
+                }
+                .onAppear {
+                    if let idx = Self.families.firstIndex(of: selectedFamily) {
+                        cursorIndex = idx
+                        proxy.scrollTo(selectedFamily, anchor: .center)
+                    }
+                    listFocused = true
+                }
+                .onChange(of: query) {
+                    if let first = filtered.first { proxy.scrollTo(first, anchor: .top) }
+                }
+            }
+        }
+        .background(Theme.Color.surfaceElevated.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+struct FontRow: View {
+    let family: String
+    let isSelected: Bool
+    var isCursor: Bool = false
+    @State private var hovered = false
+
+    var body: some View {
+        HStack {
+            Text(family)
+                .font(.custom(family, size: Theme.FontSize.sm))
+                .foregroundStyle(isSelected || isCursor ? Theme.Color.textPrimary : Theme.Color.textSecondary)
+            Spacer()
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.Color.accent)
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .frame(height: 28)
+        .background(
+            isSelected ? Theme.Color.accentMuted :
+            isCursor   ? Theme.Color.accent.opacity(0.15) :
+            hovered    ? Theme.Color.surfaceElevated : Color.clear
+        )
+        .onHover { hovered = $0 }
     }
 }
 

@@ -105,6 +105,10 @@ final class AppState {
         didSet { UserDefaults.standard.set(terminalFontFamily, forKey: "terminalFontFamily") }
     }
 
+    var terminalFontWeight: String = UserDefaults.standard.string(forKey: "terminalFontWeight") ?? "Regular" {
+        didSet { UserDefaults.standard.set(terminalFontWeight, forKey: "terminalFontWeight") }
+    }
+
     var selectedDarkThemeName: String = UserDefaults.standard.string(forKey: "selectedDarkThemeName") ?? "Catppuccin Mocha" {
         didSet { UserDefaults.standard.set(selectedDarkThemeName, forKey: "selectedDarkThemeName") }
     }

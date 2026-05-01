@@ -55,6 +55,7 @@ struct TerminalPaneView: View {
                 shellPath: appState.shellPath,
                 fontFamily: appState.terminalFontFamily,
                 fontSize: appState.terminalFontSize,
+                fontWeight: appState.terminalFontWeight,
                 isActive: isFocused,
                 themeName: activeThemeName
             )
@@ -172,6 +173,7 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
     let shellPath: String
     let fontFamily: String
     let fontSize: CGFloat
+    let fontWeight: String
     let isActive: Bool
     let themeName: String
 
@@ -220,8 +222,9 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
         context.coordinator.parent = self
         let currentFamily = nsView.font.familyName ?? ""
         let wantFamily = resolvedFontFamily()
-        if nsView.font.pointSize != fontSize || currentFamily != wantFamily {
-            nsView.font = nerdFont(size: fontSize)
+        let currentWeight = nsView.font.fontDescriptor.object(forKey: .face) as? String ?? ""
+        if nsView.font.pointSize != fontSize || currentFamily != wantFamily || currentWeight != fontWeight {
+            nsView.font = resolvedFont(size: fontSize)
         }
         if nsView.appliedThemeName != themeName {
             applyTheme(to: nsView)
@@ -240,7 +243,7 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
         tv.caretColor = theme.cursor
         tv.caretTextColor = theme.cursorText
         if let selBg = theme.selectionBackground { tv.selectedTextBackgroundColor = selBg }
-        tv.font = nerdFont(size: fontSize)
+        tv.font = resolvedFont(size: fontSize)
         tv.installColors(theme.palette)
         tv.appliedThemeName = themeName
         tv.getTerminal().setCursorStyle(.blinkBlock)
@@ -248,23 +251,24 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
 
     private func resolvedFontFamily() -> String {
         if !fontFamily.isEmpty { return fontFamily }
-        let defaults = ["IosevkaTerm Nerd Font Mono", "IosevkaTermNerdFontMono-Regular",
-                        "IosevkaTerm NFM"]
-        return defaults.first { NSFont(name: $0, size: 13) != nil } ?? ""
+        return ["IosevkaTerm Nerd Font Mono", "IosevkaTermNerdFontMono-Regular", "IosevkaTerm NFM"]
+            .first { NSFont(name: $0, size: 13) != nil } ?? ""
     }
 
-    private func nerdFont(size: CGFloat) -> NSFont {
-        // Try user-specified family first, then built-in candidates, then system fallback.
-        let candidates = fontFamily.isEmpty
-            ? ["IosevkaTerm Nerd Font Mono", "IosevkaTermNerdFontMono-Regular",
-               "IosevkaTermNerdFontMono-Medium", "IosevkaTerm NFM"]
-            : [fontFamily]
-        for name in candidates {
-            if let font = NSFont(name: name, size: size) { return font }
-        }
-        if !fontFamily.isEmpty,
-           let font = NSFontManager.shared.font(withFamily: fontFamily,
+    private func resolvedFont(size: CGFloat) -> NSFont {
+        let family = resolvedFontFamily()
+        if !family.isEmpty,
+           let font = NSFontManager.shared.font(withFamily: family,
                                                 traits: [], weight: 5, size: size) {
+            // Apply the requested weight face if available
+            if !fontWeight.isEmpty, fontWeight != "Regular" {
+                let weighted = NSFontManager.shared.font(withFamily: family,
+                                                         traits: [], weight: 5, size: size)
+                let desc = NSFontDescriptor(fontAttributes: [
+                    .family: family, .face: fontWeight
+                ])
+                if let wf = NSFont(descriptor: desc, size: size) { return wf }
+            }
             return font
         }
         return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
