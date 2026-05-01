@@ -99,7 +99,9 @@ final class AppState {
     var terminalFontSize: CGFloat = {
         let saved = UserDefaults.standard.double(forKey: "terminalFontSize")
         return saved > 0 ? CGFloat(saved) : 13
-    }()
+    }() {
+        didSet { UserDefaults.standard.set(Double(terminalFontSize), forKey: "terminalFontSize") }
+    }
 
     var terminalFontFamily: String = UserDefaults.standard.string(forKey: "terminalFontFamily") ?? "" {
         didSet { UserDefaults.standard.set(terminalFontFamily, forKey: "terminalFontFamily") }
