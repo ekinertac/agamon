@@ -97,12 +97,7 @@ struct TextSettingsView: View {
 
             Section("Size & Weight") {
                 LabeledContent("Size") {
-                    Picker("", selection: $appState.terminalFontSize) {
-                        ForEach([10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24], id: \.self) { size in
-                            Text("\(size) pt").tag(CGFloat(size))
-                        }
-                    }
-                    .frame(width: 90)
+                    FontSizeField(value: $appState.terminalFontSize, range: 8...32)
                 }
                 LabeledContent("Weight") {
                     Picker("", selection: $appState.terminalFontWeight) {
@@ -121,6 +116,83 @@ struct TextSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+// MARK: - Font size field
+
+// NSTextField subclass so we can intercept ↑/↓ before AppKit's default
+// "jump to start/end of line" behaviour swallows them.
+private final class StepperTextField: NSTextField {
+    var step: CGFloat = 1
+    var minValue: CGFloat = 1
+    var maxValue: CGFloat = 999
+    var onCommit: ((CGFloat) -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        switch event.keyCode {
+        case 126: // ↑
+            commit(CGFloat(doubleValue) + step)
+        case 125: // ↓
+            commit(CGFloat(doubleValue) - step)
+        default:
+            super.keyDown(with: event)
+        }
+    }
+
+    private func commit(_ raw: CGFloat) {
+        let clamped = min(max(raw, minValue), maxValue)
+        doubleValue = Double(clamped)
+        onCommit?(clamped)
+    }
+}
+
+struct FontSizeField: NSViewRepresentable {
+    @Binding var value: CGFloat
+    var range: ClosedRange<CGFloat> = 8...32
+
+    func makeNSView(context: Context) -> NSTextField {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 0
+        formatter.minimum = NSNumber(value: Double(range.lowerBound))
+        formatter.maximum = NSNumber(value: Double(range.upperBound))
+
+        let tf = StepperTextField()
+        tf.formatter = formatter
+        tf.alignment = .center
+        tf.isBordered = true
+        tf.bezelStyle = .roundedBezel
+        tf.controlSize = .regular
+        tf.minValue = range.lowerBound
+        tf.maxValue = range.upperBound
+        tf.step = 1
+        tf.onCommit = { context.coordinator.parent.value = $0 }
+        tf.delegate = context.coordinator
+        return tf
+    }
+
+    func updateNSView(_ tf: NSTextField, context: Context) {
+        context.coordinator.parent = self
+        // Don't overwrite while the user is editing
+        if tf.currentEditor() == nil {
+            tf.integerValue = Int(value)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: FontSizeField
+        init(_ parent: FontSizeField) { self.parent = parent }
+
+        func controlTextDidEndEditing(_ obj: Notification) {
+            guard let tf = obj.object as? NSTextField else { return }
+            let raw = CGFloat(tf.doubleValue)
+            let clamped = min(max(raw, parent.range.lowerBound), parent.range.upperBound)
+            parent.value = clamped
+            tf.integerValue = Int(clamped)
+        }
     }
 }
 
