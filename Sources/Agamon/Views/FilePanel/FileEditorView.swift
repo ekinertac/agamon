@@ -200,6 +200,27 @@ struct EditorTextView: NSViewRepresentable {
         init(_ parent: EditorTextView) {
             self.parent = parent
             super.init()
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(openFindBar),
+                name: .agamonOpenEditorFind, object: nil
+            )
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        // Called when AppState.openFind() detects editorFocused=true. SwiftUI's
+        // ShortcutHandler consumes the Cmd+F key event before NSTextView.performKeyEquivalent
+        // sees it, so we must explicitly invoke the find bar here.
+        @objc private func openFindBar() {
+            guard let tv = textView else { return }
+            // NSMenuItem with tag = NSTextFinder.Action.showFindInterface (1) is the
+            // documented way to trigger the inline find bar when usesFindBar = true.
+            let item = NSMenuItem()
+            item.tag = NSTextFinder.Action.showFindInterface.rawValue
+            tv.window?.makeFirstResponder(tv)
+            tv.performFindPanelAction(item)
         }
 
         func textDidChange(_ notification: Notification) {

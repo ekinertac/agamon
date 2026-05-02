@@ -405,11 +405,14 @@ final class AppState {
         editorFocusRequestID &+= 1
     }
 
-    // Cmd+F handler. When the editor text view has focus AppKit delivers Cmd+F to it
-    // natively (performKeyEquivalent on NSTextView) so we only need to handle the
-    // terminal case here.
+    // Cmd+F handler. ShortcutHandler intercepts the key event before NSTextView.performKeyEquivalent
+    // sees it, so we must branch here: editor focus → explicitly trigger find bar via notification;
+    // terminal focus → show the SwiftUI search overlay for the focused pane.
     func openFind() {
-        guard !editorFocused else { return }
+        if editorFocused {
+            NotificationCenter.default.post(name: .agamonOpenEditorFind, object: nil)
+            return
+        }
         // Toggle: pressing Cmd+F while search is already open for this pane closes it.
         if terminalSearchPaneID != nil && terminalSearchPaneID == focusedPaneID {
             closeTerminalSearch()
