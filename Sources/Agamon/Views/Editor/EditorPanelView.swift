@@ -1,10 +1,12 @@
 // 3rd column: text editor panel with multi-file tab bar.
 // Tab state (open files, selected file) lives in AppState. Per-file content and dirty flags
 // are owned here as @State dictionaries so they survive tab switches without re-loading.
-// Double-clicking a file in FileTreeView calls appState.openFile, which pushes to openFiles
-// and sets selectedFile; EditorPanelView reacts by loading the file if not yet cached.
-// Related: FileEditorView.swift (the NSTextView editor body),
-//          FileTreeView.swift (triggers openFile), AppState.swift (openFiles / selectedFile).
+// Two tab kinds via URL scheme:
+//   file://       → FileEditorView  (editable, Cmd+S saves)
+//   agamon-diff:// → DiffEditorView (read-only unified diff)
+// loadFile guards url.isFileURL so virtual diff URLs are never read as files.
+// Related: FileEditorView.swift, DiffEditorView.swift (content views),
+//          DiffListView.swift (triggers openDiff), AppState.swift (openFiles / openDiff).
 
 import SwiftUI
 
@@ -23,13 +25,21 @@ struct EditorPanelView: View {
             Rectangle().fill(Theme.Color.border).frame(height: 1)
 
             if let url = appState.selectedFile {
-                FileEditorView(
-                    url: url,
-                    content: contentBinding(for: url),
-                    isDirty: dirtyBinding(for: url),
-                    loadError: loadErrors[url]
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if url.scheme == "agamon-diff" {
+                    DiffEditorView(
+                        fileURL:  URL(fileURLWithPath: url.path),
+                        rootPath: appState.selectedProject?.rootPath ?? ""
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    FileEditorView(
+                        url: url,
+                        content: contentBinding(for: url),
+                        isDirty: dirtyBinding(for: url),
+                        loadError: loadErrors[url]
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } else {
                 emptyState
             }
@@ -94,6 +104,7 @@ struct EditorPanelView: View {
     }
 
     private func loadFile(_ url: URL) {
+        guard url.isFileURL else { return }   // skip agamon-diff:// virtual URLs
         Task.detached(priority: .userInitiated) {
             do {
                 let content = try String(contentsOf: url, encoding: .utf8)
@@ -135,14 +146,20 @@ struct EditorTabItem: View {
     let onClose: () -> Void
 
     @State private var hovering = false
+    private var isDiff: Bool { url.scheme == "agamon-diff" }
 
     var body: some View {
         HStack(spacing: Theme.Spacing.xs) {
-            // Dirty indicator
-            Circle()
-                .fill(Theme.Color.accent)
-                .frame(width: 5, height: 5)
-                .opacity(isDirty ? 1 : 0)
+            if isDiff {
+                Image(systemName: "plusminus")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(Theme.Color.textTertiary)
+            } else {
+                Circle()
+                    .fill(Theme.Color.accent)
+                    .frame(width: 5, height: 5)
+                    .opacity(isDirty ? 1 : 0)
+            }
 
             Text(url.lastPathComponent)
                 .font(.system(size: Theme.FontSize.xs, design: .monospaced))

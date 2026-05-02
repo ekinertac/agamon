@@ -14,6 +14,7 @@ import SwiftUI
 struct FileTreeView: View {
     let rootPath: String
     @Binding var keyboardFocused: Bool
+    var gitStatus: [URL: String] = [:]
 
     @Environment(AppState.self) private var appState
     @State private var rootItems: [FileItem] = []
@@ -43,6 +44,7 @@ struct FileTreeView: View {
                             isExpanded: expandedPaths.contains(item.url),
                             highlightedFile: $highlightedFile,
                             isKeyboardSelected: internalFocus && idx == keyboardIndex,
+                            gitBadge: gitStatus[item.url],
                             onToggle: { toggleExpanded(item) }
                         )
                         .id(item.id)
@@ -167,6 +169,7 @@ struct FileTreeRow: View {
     let isExpanded: Bool
     @Binding var highlightedFile: URL?
     var isKeyboardSelected: Bool = false
+    var gitBadge: String? = nil
     var onToggle: () -> Void = {}
 
     @Environment(AppState.self) private var appState
@@ -209,6 +212,14 @@ struct FileTreeRow: View {
                 .lineLimit(1)
 
             Spacer()
+
+            if let badge = gitBadge {
+                Text(badge)
+                    .font(.system(size: Theme.FontSize.xs, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(badgeColor(badge))
+                    .frame(width: 14, alignment: .center)
+                    .padding(.trailing, Theme.Spacing.xs)
+            }
         }
         .frame(height: 24)
         .background(rowBackground)
@@ -227,6 +238,16 @@ struct FileTreeRow: View {
             } else {
                 highlightedFile = item.url
             }
+        }
+    }
+
+    private func badgeColor(_ badge: String) -> SwiftUI.Color {
+        switch badge {
+        case "M": return Theme.Color.warning
+        case "A": return Theme.Color.success
+        case "D": return Theme.Color.danger
+        case "R": return Theme.Color.accent
+        default:  return Theme.Color.textTertiary
         }
     }
 

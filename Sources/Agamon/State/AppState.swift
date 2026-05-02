@@ -369,6 +369,17 @@ final class AppState {
         }
     }
 
+    // Opens a read-only unified diff for `fileURL` in the editor panel using a
+    // virtual agamon-diff:// URL so EditorPanelView can route it to DiffEditorView.
+    func openDiff(_ fileURL: URL) {
+        var comps    = URLComponents()
+        comps.scheme = "agamon-diff"
+        comps.host   = ""
+        comps.path   = fileURL.path
+        guard let diffURL = comps.url else { return }
+        openFile(diffURL)
+    }
+
     func closeEditor() {
         editorPanelVisible = false
     }
