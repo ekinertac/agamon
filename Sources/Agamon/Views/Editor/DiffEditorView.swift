@@ -16,10 +16,12 @@ struct DiffEditorView: View {
     let fileURL:  URL
     let rootPath: String
 
+    @Environment(AppState.self) private var appState
     @State private var content = NSAttributedString()
 
     var body: some View {
-        DiffTextView(content: content)
+        DiffTextView(content: content,
+                     onFocusChange: { focused in appState.editorFocused = focused })
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear { load() }
             .onChange(of: fileURL) { load() }
@@ -37,11 +39,34 @@ struct DiffEditorView: View {
     }
 }
 
+// MARK: - AgamonDiffTextView
+
+// Marker subclass identical in purpose to AgamonEditorTextView: the NSEvent monitor in
+// AppState.startModifierMonitor() checks firstResponder type to decide whether Cmd+W
+// should close an editor tab or a terminal pane. Using a plain NSTextView would be
+// invisible to that check, causing Cmd+W to fall through to closeCurrentPane instead.
+final class AgamonDiffTextView: NSTextView {
+    var onFocusChange: ((Bool) -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let r = super.becomeFirstResponder()
+        if r { onFocusChange?(true) }
+        return r
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let r = super.resignFirstResponder()
+        if r { onFocusChange?(false) }
+        return r
+    }
+}
+
 // MARK: - DiffTextView
 
-// NSScrollView/NSTextView wrapper. Read-only; usesFindBar enables Cmd+F inline search.
+// NSScrollView/AgamonDiffTextView wrapper. Read-only; usesFindBar enables Cmd+F inline search.
 struct DiffTextView: NSViewRepresentable {
     let content: NSAttributedString
+    var onFocusChange: ((Bool) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -52,7 +77,7 @@ struct DiffTextView: NSViewRepresentable {
         scrollView.backgroundColor       = NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1)
 
         let size = scrollView.contentSize
-        let tv   = NSTextView(frame: NSRect(origin: .zero, size: size))
+        let tv   = AgamonDiffTextView(frame: NSRect(origin: .zero, size: size))
         tv.minSize                  = NSSize(width: 0, height: size.height)
         tv.maxSize                  = NSSize(width: CGFloat.greatestFiniteMagnitude,
                                              height: CGFloat.greatestFiniteMagnitude)
@@ -68,6 +93,7 @@ struct DiffTextView: NSViewRepresentable {
         tv.textContainerInset       = NSSize(width: Theme.Spacing.md, height: Theme.Spacing.md)
         tv.usesFindBar              = true
         tv.isIncrementalSearchingEnabled = true
+        tv.onFocusChange            = onFocusChange
 
         scrollView.documentView = tv
         return scrollView

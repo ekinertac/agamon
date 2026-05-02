@@ -49,11 +49,14 @@ struct FilePanelView: View {
         .onChange(of: treeFocused) { _, new in
             if !new { appState.filePanelFocused = false }
         }
-        .onChange(of: appState.selectedProject?.rootPath) { _, path in
-            if let path { loadGitStatus(in: path) }
-        }
-        .onAppear {
-            if let path = appState.selectedProject?.rootPath { loadGitStatus(in: path) }
+        // Polls git status every 2 seconds. .task(id:) restarts automatically when the
+        // project changes, and cancels when the view disappears — no manual timer cleanup.
+        .task(id: appState.selectedProject?.rootPath) {
+            guard let path = appState.selectedProject?.rootPath else { return }
+            while !Task.isCancelled {
+                loadGitStatus(in: path)
+                try? await Task.sleep(for: .seconds(2))
+            }
         }
     }
 

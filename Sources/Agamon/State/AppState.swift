@@ -525,13 +525,14 @@ final class AppState {
             return event
         }
 
-        // Context-sensitive shortcuts: Cmd+1...9 and Cmd+Opt+Left behave differently
+        // Context-sensitive shortcuts: Cmd+1...9, Cmd+W, and Cmd+Opt+Left behave differently
         // depending on whether the editor or a terminal is the first responder.
-        // AgamonEditorTextView is our marker subclass — checking its type here avoids
-        // false positives from sheet text fields or other NSTextView instances in the UI.
+        // editorFocused is set by both AgamonEditorTextView (file editor) and
+        // AgamonDiffTextView (diff viewer) via their becomeFirstResponder overrides,
+        // so this monitor fires for both editor tab kinds without needing a type check.
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
-            guard NSApp.keyWindow?.firstResponder is AgamonEditorTextView else { return event }
+            guard self.editorFocused else { return event }
 
             let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
 
