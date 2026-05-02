@@ -22,18 +22,22 @@ struct CommandCenterView: View {
 
     // When empty query: commands + projects only (file list is too long to browse unfiltered).
     // When query present: fuzzy-rank everything by score.
+    // Capped at 50 so the result VStack stays fast (LazyVStack breaks scrollTo for off-screen items).
     private var filtered: [CommandItem] {
+        let all: [CommandItem]
         if query.isEmpty {
-            return commandItems + projectItems
+            all = commandItems + projectItems
+        } else {
+            all = (commandItems + projectItems + fileItems)
+                .compactMap { item -> (item: CommandItem, score: Int)? in
+                    let (hit, score) = fuzzyScore(query, in: item.title)
+                    guard hit else { return nil }
+                    return (item, score)
+                }
+                .sorted { $0.score > $1.score }
+                .map(\.item)
         }
-        return (commandItems + projectItems + fileItems)
-            .compactMap { item -> (item: CommandItem, score: Int)? in
-                let (hit, score) = fuzzyScore(query, in: item.title)
-                guard hit else { return nil }
-                return (item, score)
-            }
-            .sorted { $0.score > $1.score }
-            .map(\.item)
+        return Array(all.prefix(50))
     }
 
     var body: some View {
@@ -76,7 +80,10 @@ struct CommandCenterView: View {
 
                     ScrollViewReader { proxy in
                         ScrollView(.vertical, showsIndicators: false) {
-                            LazyVStack(spacing: 0) {
+                            // VStack (not LazyVStack): all rows must be in the view hierarchy
+                            // so scrollTo can find off-screen items. Safe because filtered
+                            // is capped at 50 items.
+                            VStack(spacing: 0) {
                                 ForEach(Array(filtered.enumerated()), id: \.element.id) { idx, item in
                                     CommandRow(item: item, isSelected: idx == selectedIndex)
                                         .id(item.id)
@@ -88,9 +95,8 @@ struct CommandCenterView: View {
                         .frame(maxHeight: 340)
                         .onChange(of: selectedIndex) { _, new in
                             guard new < filtered.count else { return }
-                            withAnimation(.easeInOut(duration: 0.1)) {
-                                proxy.scrollTo(filtered[new].id, anchor: .center)
-                            }
+                            // anchor: nil = scroll minimum amount to make item visible
+                            proxy.scrollTo(filtered[new].id, anchor: nil)
                         }
                     }
                 }
