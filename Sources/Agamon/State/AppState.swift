@@ -99,6 +99,9 @@ final class AppState {
     var filePanelFocused: Bool = false
     var activeModifiers: NSEvent.ModifierFlags = []
 
+    // True while the command center palette is visible.
+    var commandCenterVisible: Bool = false
+
     // Terminal find bar: non-nil paneID means that pane is showing a search overlay.
     // Cleared by refocusActiveTerminal() so tab switches / Escape / close all dismiss it.
     var terminalSearchPaneID: UUID? = nil
@@ -419,6 +422,10 @@ final class AppState {
             return
         }
         terminalSearchPaneID = focusedPaneID
+    }
+
+    func openCommandCenter() {
+        commandCenterVisible.toggle()
     }
 
     func closeTerminalSearch() {

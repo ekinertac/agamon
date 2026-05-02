@@ -112,6 +112,9 @@ struct AgamonCommands: Commands {
 
             Button("Find...") { appState?.openFind() }
                 .keyboardShortcut("f", modifiers: .command)
+
+            Button("Command Center") { appState?.openCommandCenter() }
+                .keyboardShortcut("p", modifiers: .command)
         }
     }
 }

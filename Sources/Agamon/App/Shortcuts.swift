@@ -83,6 +83,10 @@ struct ShortcutHandler: View {
             Button("", action: appState.openFind)
                 .keyboardShortcut("f", modifiers: .command)
 
+            // Command center
+            Button("", action: appState.openCommandCenter)
+                .keyboardShortcut("p", modifiers: .command)
+
             // Zoom focused pane to fill the container, or restore the split layout
             Button("", action: appState.togglePaneZoom)
                 .keyboardShortcut(.return, modifiers: [.command, .shift])

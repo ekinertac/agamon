@@ -60,6 +60,13 @@ struct ContentView: View {
         }
         .focusedSceneValue(\.appState, appState)
         .overlay { ShortcutHandler() }
+        .overlay {
+            if appState.commandCenterVisible {
+                CommandCenterView()
+                    .environment(appState)
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: appState.commandCenterVisible)
     }
 
     // All tabs are kept in the hierarchy simultaneously — only the active one is visible.
