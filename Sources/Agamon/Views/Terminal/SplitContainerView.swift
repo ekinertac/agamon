@@ -99,7 +99,7 @@ struct PaneDividerView: View {
                     else        { NSCursor.pop() }
                 }
                 .gesture(
-                    DragGesture(minimumDistance: 1)
+                    DragGesture(minimumDistance: 1, coordinateSpace: .global)
                         .onChanged { value in
                             let base = dragBaseNormPos ?? normalizedPos
                             if dragBaseNormPos == nil { dragBaseNormPos = normalizedPos }
@@ -134,7 +134,7 @@ struct PaneDividerView: View {
                     else        { NSCursor.pop() }
                 }
                 .gesture(
-                    DragGesture(minimumDistance: 1)
+                    DragGesture(minimumDistance: 1, coordinateSpace: .global)
                         .onChanged { value in
                             let base = dragBaseNormPos ?? normalizedPos
                             if dragBaseNormPos == nil { dragBaseNormPos = normalizedPos }

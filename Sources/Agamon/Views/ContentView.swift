@@ -127,7 +127,7 @@ struct ResizeDivider: View {
                         else        { NSCursor.pop() }
                     }
                     .gesture(
-                        DragGesture(minimumDistance: 1)
+                        DragGesture(minimumDistance: 1, coordinateSpace: .global)
                             .onChanged { onDrag($0.translation.width) }
                             .onEnded   { _ in onEnd() }
                     )
