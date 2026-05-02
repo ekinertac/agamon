@@ -28,10 +28,17 @@ struct DiffEditorView: View {
     }
 
     private func load() {
-        let path = fileURL.path
+        // Use a path relative to rootPath so git resolves it correctly even when the
+        // project root is a subdirectory of a larger git repository.
+        let relPath: String = {
+            let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+            return fileURL.path.hasPrefix(prefix)
+                ? String(fileURL.path.dropFirst(prefix.count))
+                : fileURL.path
+        }()
         let root = rootPath
         Task.detached(priority: .userInitiated) {
-            let raw  = gitOutput(["diff", "HEAD", "--", path], in: root)
+            let raw  = gitOutput(["diff", "HEAD", "--", relPath], in: root)
             let text = raw.isEmpty ? "(no diff \u{2014} file may be untracked or unchanged)" : raw
             // Build NSAttributedString on the main thread — it is not Sendable.
             await MainActor.run { content = DiffRenderer.render(text) }

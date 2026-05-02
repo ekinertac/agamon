@@ -53,7 +53,10 @@ struct DiffListView: View {
     private func reload() {
         let root = rootPath
         Task.detached(priority: .utility) {
-            let raw    = gitOutput(["diff", "HEAD", "--numstat"], in: root)
+            // --relative makes git report paths relative to CWD (= rootPath), not the git root.
+            // Without it, projects in a subdirectory of a repo get paths like "subdir/file.ts"
+            // instead of "file.ts", breaking URL construction and the diff command.
+            let raw    = gitOutput(["diff", "HEAD", "--numstat", "--relative"], in: root)
             let parsed = Self.parse(raw, rootPath: root)
             await MainActor.run { items = parsed; loaded = true }
         }
