@@ -35,7 +35,7 @@ struct ContentView: View {
             // Column 3: text editor (shown when a file is open)
             if appState.editorPanelVisible {
                 ResizeDivider {
-                    editorPanelWidth = max(220, min(800, editorPanelBaseWidth - $0))
+                    editorPanelWidth = max(220, editorPanelBaseWidth - $0)
                 } onEnd: {
                     editorPanelBaseWidth = editorPanelWidth
                 }

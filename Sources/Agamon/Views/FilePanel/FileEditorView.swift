@@ -16,7 +16,13 @@ struct FileEditorView: View {
     var loadError: String? = nil
 
     @Environment(AppState.self) private var appState
+    @Environment(\.colorScheme) private var colorScheme
     @State private var saveError: String?
+
+    private var activeTheme: TerminalTheme? {
+        let name = colorScheme == .dark ? appState.selectedDarkThemeName : appState.selectedLightThemeName
+        return TerminalTheme.all[name] ?? TerminalTheme.all.values.first
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,6 +36,8 @@ struct FileEditorView: View {
                 onChange: { isDirty = true },
                 focusRequestID: appState.editorFocusRequestID,
                 fileExtension: url.pathExtension,
+                themePalette: activeTheme?.nsColorPalette ?? [],
+                themeForeground: activeTheme?.foreground ?? NSColor(white: 0.85, alpha: 1),
                 onFocusChange: { focused in appState.editorFocused = focused }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -111,6 +119,8 @@ struct EditorTextView: NSViewRepresentable {
     // the same call) is still honored.
     var focusRequestID: Int
     var fileExtension: String
+    var themePalette: [NSColor] = []
+    var themeForeground: NSColor = NSColor(white: 0.85, alpha: 1)
     var onFocusChange: ((Bool) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -171,10 +181,14 @@ struct EditorTextView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
+        let prevParent = context.coordinator.parent
         context.coordinator.parent = self
         if textView.string != text {
             textView.string = text
-            // Re-highlight after replacing the full text (e.g. new file loaded).
+            context.coordinator.applyHighlighting(to: textView)
+        } else if prevParent.themePalette.count != themePalette.count
+                  || zip(prevParent.themePalette, themePalette).contains(where: { $0 != $1 }) {
+            // Theme changed — re-highlight without replacing the string
             context.coordinator.applyHighlighting(to: textView)
         }
         if focusRequestID != context.coordinator.lastFocusRequestID {
@@ -241,13 +255,12 @@ struct EditorTextView: NSViewRepresentable {
         // Applies syntax colors to the text view's storage. Safe to call on main thread only.
         func applyHighlighting(to tv: NSTextView) {
             guard let storage = tv.textStorage else { return }
-            let lang = SyntaxLanguage.detect(fileExtension: parent.fileExtension)
-            let baseFont  = NSFont.monospacedSystemFont(ofSize: Theme.FontSize.sm, weight: .regular)
-            let baseColor = NSColor(white: 0.85, alpha: 1)
+            let lang     = SyntaxLanguage.detect(fileExtension: parent.fileExtension)
+            let baseFont = NSFont.monospacedSystemFont(ofSize: Theme.FontSize.sm, weight: .regular)
+            let palette  = SyntaxPalette(nsColors: parent.themePalette, foreground: parent.themeForeground)
             SyntaxHighlighter.apply(to: storage, language: lang,
-                                    baseColor: baseColor, baseFont: baseFont)
-            // Restore typing attributes so new characters match the base style.
-            tv.typingAttributes = [.font: baseFont, .foregroundColor: baseColor]
+                                    palette: palette, baseFont: baseFont)
+            tv.typingAttributes = [.font: baseFont, .foregroundColor: palette.base]
         }
     }
 }

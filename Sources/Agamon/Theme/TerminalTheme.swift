@@ -22,7 +22,18 @@ struct TerminalTheme {
     let cursorText: NSColor?         // cursor-text  → caretTextColor
     let selectionBackground: NSColor? // selection-background → selectedTextBackgroundColor
     // selection-foreground has no SwiftTerm API — parsed and discarded
-    let palette: [SwiftTerm.Color]   // exactly 16 entries
+    let palette: [SwiftTerm.Color]   // exactly 16 entries (used by SwiftTerm)
+
+    // The same 16 palette entries as NSColor, used by the syntax highlighter.
+    // Converted on demand from SwiftTerm.Color (UInt16 components / 65535).
+    var nsColorPalette: [NSColor] {
+        palette.map { c in
+            NSColor(red:   CGFloat(c.red)   / 65535,
+                    green: CGFloat(c.green) / 65535,
+                    blue:  CGFloat(c.blue)  / 65535,
+                    alpha: 1)
+        }
+    }
 
     // MARK: - Parser
 
