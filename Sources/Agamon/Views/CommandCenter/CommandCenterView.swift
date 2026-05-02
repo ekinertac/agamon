@@ -257,8 +257,13 @@ private struct CommandRow: View {
 
 // MARK: - PaletteTextField
 
-// NSTextField wrapper that routes ↑↓↩⎋ to callbacks before the text field
-// sees them, so arrow-key navigation works while the field has focus.
+// NSTextField wrapper that routes ↑↓↩⎋ to callbacks while the field has keyboard focus.
+//
+// Why NSTextFieldDelegate.control(_:textView:doCommandBy:) instead of keyDown override:
+// NSTextField uses an internal NSTextView (the "field editor") as the actual first responder
+// while editing. The field editor consumes all key events before NSTextField.keyDown ever
+// fires. The delegate method doCommandBy is called by the field editor for every command
+// selector, which is the only reliable hook for navigation keys inside a text field.
 private struct PaletteTextField: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String
@@ -283,21 +288,12 @@ private struct PaletteTextField: NSViewRepresentable {
             ]
         )
         field.delegate = context.coordinator
-        wireCallbacks(field)
         return field
     }
 
     func updateNSView(_ field: PaletteNSTextField, context: Context) {
         context.coordinator.parent = self
         if field.stringValue != text { field.stringValue = text }
-        wireCallbacks(field)
-    }
-
-    private func wireCallbacks(_ field: PaletteNSTextField) {
-        field.onArrowDown = onArrowDown
-        field.onArrowUp   = onArrowUp
-        field.onReturn    = onReturn
-        field.onEscape    = onEscape
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -310,30 +306,33 @@ private struct PaletteTextField: NSViewRepresentable {
             guard let f = n.object as? NSTextField else { return }
             parent.text = f.stringValue
         }
+
+        // Called by the field editor for every command selector — this fires for
+        // navigation keys that keyDown on NSTextField itself never receives.
+        func control(_ control: NSControl, textView: NSTextView,
+                     doCommandBy selector: Selector) -> Bool {
+            switch selector {
+            case #selector(NSResponder.moveDown(_:)):
+                parent.onArrowDown(); return true
+            case #selector(NSResponder.moveUp(_:)):
+                parent.onArrowUp(); return true
+            case #selector(NSResponder.insertNewline(_:)):
+                parent.onReturn(); return true
+            case #selector(NSResponder.cancelOperation(_:)):
+                parent.onEscape(); return true
+            default:
+                return false
+            }
+        }
     }
 }
 
-// NSTextField subclass: intercepts navigation keys before handing off to super.
+// Minimal NSTextField subclass: only purpose is grabbing first responder on appear.
 final class PaletteNSTextField: NSTextField {
-    var onArrowDown: (() -> Void)?
-    var onArrowUp:   (() -> Void)?
-    var onReturn:    (() -> Void)?
-    var onEscape:    (() -> Void)?
-
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window != nil {
             DispatchQueue.main.async { self.window?.makeFirstResponder(self) }
-        }
-    }
-
-    override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case 125: onArrowDown?()         // ↓
-        case 126: onArrowUp?()           // ↑
-        case 36, 76: onReturn?()         // ↩ and numpad ↩
-        case 53: onEscape?()             // ⎋
-        default: super.keyDown(with: event)
         }
     }
 }
