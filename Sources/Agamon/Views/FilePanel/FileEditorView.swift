@@ -36,8 +36,9 @@ struct FileEditorView: View {
                 onChange: { isDirty = true },
                 focusRequestID: appState.editorFocusRequestID,
                 fileExtension: url.pathExtension,
-                themePalette: activeTheme?.nsColorPalette ?? [],
+                themePalette: activeTheme?.rawPalette ?? [],
                 themeForeground: activeTheme?.foreground ?? NSColor(white: 0.85, alpha: 1),
+                themeBackground: activeTheme?.background ?? NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1),
                 onFocusChange: { focused in appState.editorFocused = focused }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -121,6 +122,7 @@ struct EditorTextView: NSViewRepresentable {
     var fileExtension: String
     var themePalette: [NSColor] = []
     var themeForeground: NSColor = NSColor(white: 0.85, alpha: 1)
+    var themeBackground: NSColor = NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1)
     var onFocusChange: ((Bool) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -130,7 +132,7 @@ struct EditorTextView: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = true
-        scrollView.backgroundColor = NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1)
+        scrollView.backgroundColor = themeBackground
 
         let contentSize = scrollView.contentSize
         let textView = AgamonEditorTextView(frame: NSRect(origin: .zero, size: contentSize))
@@ -161,7 +163,7 @@ struct EditorTextView: NSViewRepresentable {
         let editorColor = NSColor(white: 0.85, alpha: 1)
         textView.font = editorFont
         textView.textColor = editorColor
-        textView.backgroundColor = NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1)
+        textView.backgroundColor = themeBackground
         textView.typingAttributes = [.font: editorFont, .foregroundColor: editorColor]
         textView.textContainerInset = NSSize(width: Theme.Spacing.md, height: Theme.Spacing.md)
 
@@ -183,11 +185,19 @@ struct EditorTextView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? NSTextView else { return }
         let prevParent = context.coordinator.parent
         context.coordinator.parent = self
+
+        let paletteChanged = prevParent.themePalette.count != themePalette.count
+            || zip(prevParent.themePalette, themePalette).contains(where: { $0 != $1 })
+
+        if paletteChanged || prevParent.themeBackground != themeBackground {
+            scrollView.backgroundColor = themeBackground
+            textView.backgroundColor = themeBackground
+        }
+
         if textView.string != text {
             textView.string = text
             context.coordinator.applyHighlighting(to: textView)
-        } else if prevParent.themePalette.count != themePalette.count
-                  || zip(prevParent.themePalette, themePalette).contains(where: { $0 != $1 }) {
+        } else if paletteChanged {
             // Theme changed — re-highlight without replacing the string
             context.coordinator.applyHighlighting(to: textView)
         }

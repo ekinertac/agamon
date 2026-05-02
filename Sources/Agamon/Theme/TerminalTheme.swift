@@ -23,17 +23,10 @@ struct TerminalTheme {
     let selectionBackground: NSColor? // selection-background → selectedTextBackgroundColor
     // selection-foreground has no SwiftTerm API — parsed and discarded
     let palette: [SwiftTerm.Color]   // exactly 16 entries (used by SwiftTerm)
-
-    // The same 16 palette entries as NSColor, used by the syntax highlighter.
-    // Converted on demand from SwiftTerm.Color (UInt16 components / 65535).
-    var nsColorPalette: [NSColor] {
-        palette.map { c in
-            NSColor(red:   CGFloat(c.red)   / 65535,
-                    green: CGFloat(c.green) / 65535,
-                    blue:  CGFloat(c.blue)  / 65535,
-                    alpha: 1)
-        }
-    }
+    // The same 16 entries stored as NSColor, directly from hex parsing.
+    // Used by the syntax highlighter — avoids the NSColor→SwiftTerm.Color→NSColor round-trip
+    // which crosses the calibratedRGB/sRGB boundary and can produce visibly wrong colors.
+    let rawPalette: [NSColor]
 
     // MARK: - Parser
 
@@ -71,9 +64,8 @@ struct TerminalTheme {
 
         guard let background = bg, let foreground = fg else { return nil }
 
-        let swiftTermPalette: [SwiftTerm.Color] = (0..<16).map { i in
-            (paletteMap[i] ?? foreground).toSwiftTermColor()
-        }
+        let nsColors: [NSColor] = (0..<16).map { i in paletteMap[i] ?? foreground }
+        let swiftTermPalette: [SwiftTerm.Color] = nsColors.map { $0.toSwiftTermColor() }
 
         return TerminalTheme(
             name: name,
@@ -82,7 +74,8 @@ struct TerminalTheme {
             cursor: cursor ?? foreground,
             cursorText: cursorText,
             selectionBackground: selBg,
-            palette: swiftTermPalette
+            palette: swiftTermPalette,
+            rawPalette: nsColors
         )
     }
 
