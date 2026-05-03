@@ -30,7 +30,7 @@ _assemble: $(INFO_PLIST)
 	mkdir -p $(APP)/Contents/Resources
 	cp $(BINARY_SRC)  $(APP)/Contents/MacOS/Agamon
 	cp $(INFO_PLIST)  $(APP)/Contents/Info.plist
-	cp -R $(BUNDLE_SRC) $(APP)/
+	cp -R $(BUNDLE_SRC) $(APP)/Contents/Resources/
 	@if [ -f $(ICON_SRC) ]; then \
 		cp $(ICON_SRC) $(APP)/Contents/Resources/AppIcon.icns; \
 	else \

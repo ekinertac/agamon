@@ -95,7 +95,13 @@ struct TerminalTheme {
         var themes: [String: TerminalTheme] = [:]
 
         // 1. Bundled themes — plain-text files in Resources/Themes/ (Ghostty key=value format)
-        if let dir = Bundle.module.url(forResource: "Themes", withExtension: nil),
+        // In a packaged .app, the resource bundle lives in Contents/Resources/ (codesign requires
+        // all content inside Contents/). Bundle.module's generated accessor looks at bundleURL root
+        // which violates that, so we check Contents/Resources/ first and fall back for SPM debug runs.
+        let resourceBundle: Bundle = Bundle.main.resourceURL
+            .flatMap { Bundle(url: $0.appendingPathComponent("Agamon_Agamon.bundle")) }
+            ?? Bundle.module
+        if let dir = resourceBundle.url(forResource: "Themes", withExtension: nil),
            let urls = try? FileManager.default.contentsOfDirectory(
                at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
             for url in urls {
