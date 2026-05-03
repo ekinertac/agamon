@@ -31,8 +31,8 @@ DerivedData/
 # App bundle (built locally via make bundle)
 Agamon.app/
 
-# Icon source (binary, generated from this — commit packaging/AppIcon.icns instead)
-icon.png
+# Icon source at project root (generated from this — commit packaging/AppIcon.icns instead)
+/icon.png
 
 # Credentials / local overrides
 *.p12
