@@ -325,6 +325,18 @@ final class AppState {
         openFile(openFiles[index])
     }
 
+    func selectNextEditorTab() {
+        guard editorPanelVisible, !openFiles.isEmpty else { return }
+        let idx = openFiles.firstIndex(of: selectedFile ?? openFiles[0]) ?? 0
+        openFile(openFiles[(idx + 1) % openFiles.count])
+    }
+
+    func selectPreviousEditorTab() {
+        guard editorPanelVisible, !openFiles.isEmpty else { return }
+        let idx = openFiles.firstIndex(of: selectedFile ?? openFiles[0]) ?? 0
+        openFile(openFiles[(idx - 1 + openFiles.count) % openFiles.count])
+    }
+
     func selectFilePanelTab(at index: Int) {
         filePanelTabIndex = max(0, index)
     }
@@ -614,6 +626,16 @@ final class AppState {
                let char = event.characters, char.count == 1,
                let n = Int(char), (1...9).contains(n) {
                 self.selectEditorTab(at: n - 1)
+                return nil
+            }
+
+            // Cmd+Shift+[/] while editor focused → prev/next editor tab (mirrors terminal tab shortcut).
+            if mods == [.command, .shift], event.charactersIgnoringModifiers == "[" {
+                self.selectPreviousEditorTab()
+                return nil
+            }
+            if mods == [.command, .shift], event.charactersIgnoringModifiers == "]" {
+                self.selectNextEditorTab()
                 return nil
             }
 

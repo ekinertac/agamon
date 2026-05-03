@@ -27,6 +27,7 @@ import AppKit
 
 struct TerminalPaneView: View {
     let paneID: UUID
+    let projectRootPath: String
     @Environment(AppState.self) private var appState
     @Environment(\.colorScheme) private var colorScheme
 
@@ -41,11 +42,6 @@ struct TerminalPaneView: View {
         colorScheme == .dark ? appState.selectedDarkThemeName : appState.selectedLightThemeName
     }
 
-    private var rootPath: String {
-        appState.selectedProject?.rootPath
-            ?? FileManager.default.homeDirectoryForCurrentUser.path
-    }
-
     // Legacy scroller width — SwiftTerm subtracts this from bounds.width regardless of
     // visibility. We extend the terminal frame by this amount so text fills the container.
     private var scrollerReservedWidth: CGFloat {
@@ -56,7 +52,7 @@ struct TerminalPaneView: View {
         ZStack {
             TerminalNSViewWrapper(
                 paneID: paneID,
-                rootPath: rootPath,
+                rootPath: projectRootPath,
                 shellPath: appState.shellPath,
                 fontFamily: appState.terminalFontFamily,
                 fontSize: appState.terminalFontSize,

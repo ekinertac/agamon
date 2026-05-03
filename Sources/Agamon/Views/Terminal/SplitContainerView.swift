@@ -14,6 +14,7 @@ import AppKit
 
 struct SplitContainerView: View {
     let pane: PaneNode
+    let projectRootPath: String
     @Environment(AppState.self) private var appState
 
     var body: some View {
@@ -30,7 +31,7 @@ struct SplitContainerView: View {
                         : entry.frame
                     let w = max(1, f.width  * size.width)
                     let h = max(1, f.height * size.height)
-                    TerminalPaneView(paneID: entry.id)
+                    TerminalPaneView(paneID: entry.id, projectRootPath: projectRootPath)
                         .frame(width: w, height: h)
                         .position(
                             x: f.minX * size.width  + w / 2,

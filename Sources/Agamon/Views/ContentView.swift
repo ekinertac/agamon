@@ -75,18 +75,22 @@ struct ContentView: View {
         .animation(.easeOut(duration: 0.12), value: appState.commandCenterVisible)
     }
 
-    // All tabs are kept in the hierarchy simultaneously — only the active one is visible.
-    // This prevents AgamonTerminalView from being re-parented on tab switch, which would
-    // send TIOCSWINSZ to the pty, trigger SIGWINCH in tmux, and wipe the visible content.
+    // ALL projects' tabs are kept in the hierarchy simultaneously — only the active one is visible.
+    // This extends the same-project tab strategy to cover project switches: no re-parenting ever,
+    // so TIOCSWINSZ(0,0) is never sent and tmux sessions survive switching between projects.
     @ViewBuilder
     private var terminalArea: some View {
-        if let project = appState.selectedProject, !project.tabs.isEmpty {
+        if appState.selectedProject?.tabs.isEmpty == false {
             ZStack {
-                ForEach(project.tabs) { tab in
-                    SplitContainerView(pane: tab.rootPane)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .opacity(tab.id == appState.selectedTabID ? 1 : 0)
-                        .allowsHitTesting(tab.id == appState.selectedTabID)
+                ForEach(appState.projects) { project in
+                    ForEach(project.tabs) { tab in
+                        let isVisible = project.id == appState.selectedProjectID
+                                     && tab.id == appState.selectedTabID
+                        SplitContainerView(pane: tab.rootPane, projectRootPath: project.rootPath)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .opacity(isVisible ? 1 : 0)
+                            .allowsHitTesting(isVisible)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
