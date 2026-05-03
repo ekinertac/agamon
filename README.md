@@ -8,6 +8,7 @@
   </a>
   <img src="https://img.shields.io/badge/macOS-14%2B-black?style=flat-square" alt="macOS 14+" />
   <img src="https://img.shields.io/badge/Swift-5.9-orange?style=flat-square" alt="Swift 5.9" />
+  <img src="https://img.shields.io/github/license/ekinertac/agamon?style=flat-square&color=green" alt="MIT License" />
 </div>
 
 ---
