@@ -1,9 +1,45 @@
+# Swift Package Manager
 .build/
+.swiftpm/xcode/
+
+# Xcode
 *.xcuserstate
 xcuserdata/
 DerivedData/
-.DS_Store
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Build artifacts
 *.o
 *.d
+*.a
+*.so
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# App bundle (built locally via make bundle)
 Agamon.app/
+
+# Icon source (binary, generated from this — commit packaging/AppIcon.icns instead)
 icon.png
+
+# Credentials / local overrides
+*.p12
+*.p8
+
+# Editor
+.vscode/
+*.swp
+*.swo
+*~
