@@ -36,6 +36,7 @@ struct FileEditorView: View {
                 onChange: { isDirty = true },
                 focusRequestID: appState.editorFocusRequestID,
                 fileExtension: url.pathExtension,
+                lineWrap: appState.editorLineWrap,
                 themePalette: activeTheme?.rawPalette ?? [],
                 themeForeground: activeTheme?.foreground ?? NSColor(white: 0.85, alpha: 1),
                 themeBackground: activeTheme?.background ?? NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1),
@@ -106,6 +107,67 @@ final class AgamonEditorTextView: NSTextView {
         if r { onFocusChange?(false) }
         return r
     }
+
+    // Remove one level of indentation (one tab or up to 4 spaces) from every line
+    // that intersects the current selection. Uses shouldChangeText/didChangeText so
+    // undo is registered automatically; all removals are grouped into one undo step.
+    override func insertBacktab(_ sender: Any?) {
+        guard let storage = textStorage, isEditable else {
+            super.insertBacktab(sender)
+            return
+        }
+
+        let sel   = selectedRange()
+        let nsStr = storage.string as NSString
+        let linesRange = nsStr.lineRange(for: sel)
+
+        // Collect (lineStart, charsToRemove) for every line in the selection range.
+        var removals: [(start: Int, count: Int)] = []
+        var pos = linesRange.location
+        while pos < NSMaxRange(linesRange) {
+            let lr   = nsStr.lineRange(for: NSRange(location: pos, length: 0))
+            let line = nsStr.substring(with: lr)
+            var n = 0
+            if line.hasPrefix("\t") {
+                n = 1
+            } else {
+                for ch in line.unicodeScalars {
+                    guard ch == " " && n < 4 else { break }
+                    n += 1
+                }
+            }
+            removals.append((start: lr.location, count: n))
+            if lr.length == 0 { break }
+            pos = NSMaxRange(lr)
+        }
+
+        guard removals.contains(where: { $0.count > 0 }) else { return }
+
+        // Apply forward, tracking cumulative offset so ranges stay valid after each deletion.
+        undoManager?.beginUndoGrouping()
+        var offset = 0
+        var removedBeforeCursor = 0
+        var totalRemoved = 0
+        for (start, count) in removals {
+            guard count > 0 else { continue }
+            let loc   = start - offset
+            let range = NSRange(location: loc, length: count)
+            if shouldChangeText(in: range, replacementString: "") {
+                storage.replaceCharacters(in: range, with: "")
+                didChangeText()
+                offset += count
+                totalRemoved += count
+                if start < sel.location {
+                    removedBeforeCursor += min(start + count, sel.location) - start
+                }
+            }
+        }
+        undoManager?.endUndoGrouping()
+
+        let newLoc = max(linesRange.location, sel.location - removedBeforeCursor)
+        let newLen = max(0, sel.length - (totalRemoved - removedBeforeCursor))
+        setSelectedRange(NSRange(location: newLoc, length: newLen))
+    }
 }
 
 // MARK: - NSTextView wrapper
@@ -120,6 +182,7 @@ struct EditorTextView: NSViewRepresentable {
     // the same call) is still honored.
     var focusRequestID: Int
     var fileExtension: String
+    var lineWrap: Bool = true
     var themePalette: [NSColor] = []
     var themeForeground: NSColor = NSColor(white: 0.85, alpha: 1)
     var themeBackground: NSColor = NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1)
@@ -143,11 +206,7 @@ struct EditorTextView: NSViewRepresentable {
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
                                   height: CGFloat.greatestFiniteMagnitude)
         textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.containerSize = NSSize(
-            width: contentSize.width, height: CGFloat.greatestFiniteMagnitude)
-        textView.textContainer?.widthTracksTextView = true
+        applyLineWrap(lineWrap, to: textView, scrollView: scrollView)
 
         // isRichText must be true for NSTextStorage attribute changes to persist between keystrokes.
         // typingAttributes ensures new characters the user types get the base style, not a stale color.
@@ -194,6 +253,9 @@ struct EditorTextView: NSViewRepresentable {
             textView.backgroundColor = themeBackground
         }
 
+        if prevParent.lineWrap != lineWrap {
+            applyLineWrap(lineWrap, to: textView, scrollView: scrollView)
+        }
         if textView.string != text {
             textView.string = text
             context.coordinator.applyHighlighting(to: textView)
@@ -213,6 +275,24 @@ struct EditorTextView: NSViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    private func applyLineWrap(_ wrap: Bool, to textView: NSTextView, scrollView: NSScrollView) {
+        if wrap {
+            textView.isHorizontallyResizable = false
+            textView.autoresizingMask = [.width]
+            textView.textContainer?.widthTracksTextView = true
+            textView.textContainer?.containerSize = NSSize(
+                width: scrollView.contentSize.width, height: CGFloat.greatestFiniteMagnitude)
+            scrollView.hasHorizontalScroller = false
+        } else {
+            textView.isHorizontallyResizable = true
+            textView.autoresizingMask = []
+            textView.textContainer?.widthTracksTextView = false
+            textView.textContainer?.containerSize = NSSize(
+                width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            scrollView.hasHorizontalScroller = true
+        }
+    }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: EditorTextView
@@ -268,8 +348,12 @@ struct EditorTextView: NSViewRepresentable {
             let lang     = SyntaxLanguage.detect(fileExtension: parent.fileExtension)
             let baseFont = NSFont.monospacedSystemFont(ofSize: Theme.FontSize.sm, weight: .regular)
             let palette  = SyntaxPalette(nsColors: parent.themePalette, foreground: parent.themeForeground)
-            SyntaxHighlighter.apply(to: storage, language: lang,
-                                    palette: palette, baseFont: baseFont)
+            if lang == .markdown {
+                MarkdownHighlighter.apply(to: storage, foreground: parent.themeForeground,
+                                          palette: palette, baseFontSize: Theme.FontSize.sm)
+            } else {
+                SyntaxHighlighter.apply(to: storage, language: lang, palette: palette, baseFont: baseFont)
+            }
             tv.typingAttributes = [.font: baseFont, .foregroundColor: palette.base]
         }
     }

@@ -7,6 +7,8 @@
 import SwiftUI
 import AppKit
 
+let agamonVersion = "0.2"
+
 @main
 struct AgamonApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate

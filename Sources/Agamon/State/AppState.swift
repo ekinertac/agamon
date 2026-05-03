@@ -85,9 +85,29 @@ final class AppState {
     var selectedTabID: UUID?
     var focusedPaneID: UUID?
     var zoomedPaneID: UUID? = nil    // non-nil while a pane is zoomed to fill the container
-    var openFiles: [URL] = []        // ordered list of open editor tabs
-    var selectedFile: URL? = nil     // currently active editor file
-    var editorPanelVisible: Bool = false
+    // Persisted: virtual agamon-diff:// URLs are intentionally excluded (ephemeral).
+    var openFiles: [URL] = {
+        let paths = UserDefaults.standard.stringArray(forKey: "editorOpenFiles") ?? []
+        return paths.map { URL(fileURLWithPath: $0) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+    }() {
+        didSet {
+            let paths = openFiles.filter(\.isFileURL).map(\.path)
+            UserDefaults.standard.set(paths, forKey: "editorOpenFiles")
+        }
+    }
+    var selectedFile: URL? = {
+        guard let path = UserDefaults.standard.string(forKey: "editorSelectedFile") else { return nil }
+        let url = URL(fileURLWithPath: path)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }() {
+        didSet { UserDefaults.standard.set(selectedFile?.path, forKey: "editorSelectedFile") }
+    }
+    // Restored from open files so the editor panel reopens with the last session's state.
+    var editorPanelVisible: Bool = {
+        let paths = UserDefaults.standard.stringArray(forKey: "editorOpenFiles") ?? []
+        return paths.contains { FileManager.default.fileExists(atPath: $0) }
+    }()
     // Bumped by focusEditor() to request first-responder on the editor text view.
     // EditorTextView observes this via its prop and grabs focus when the value changes.
     // Used instead of a notification because the editor view isn't mounted until
@@ -160,6 +180,14 @@ final class AppState {
 
     var dimOnlyText: Bool = UserDefaults.standard.bool(forKey: "dimOnlyText") {
         didSet { UserDefaults.standard.set(dimOnlyText, forKey: "dimOnlyText") }
+    }
+
+    var editorLineWrap: Bool = {
+        UserDefaults.standard.object(forKey: "editorLineWrap") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "editorLineWrap")
+    }() {
+        didSet { UserDefaults.standard.set(editorLineWrap, forKey: "editorLineWrap") }
     }
 
     // MARK: - Derived

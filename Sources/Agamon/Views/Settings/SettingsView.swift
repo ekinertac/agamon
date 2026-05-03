@@ -95,6 +95,10 @@ struct TextSettingsView: View {
                     .listRowInsets(EdgeInsets())
             }
 
+            Section("Editor") {
+                Toggle("Line wrap", isOn: $appState.editorLineWrap)
+            }
+
             Section("Size & Weight") {
                 LabeledContent("Size") {
                     FontSizeField(value: $appState.terminalFontSize, range: 8...32)

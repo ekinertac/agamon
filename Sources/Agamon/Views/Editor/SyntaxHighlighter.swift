@@ -170,7 +170,7 @@ struct SyntaxHighlighter {
         case .ruby:       return rubyRules()
         case .go:         return goRules()
         case .rust:       return rustRules()
-        case .markdown:   return markdownRules()
+        case .markdown:   return []  // handled by MarkdownHighlighter
         }
     }
 
@@ -246,7 +246,7 @@ struct SyntaxHighlighter {
     // MARK: - TypeScript (superset of JS)
 
     private static func tsRules() -> [SyntaxRule] {
-        var rules = jsRules().filter { rule in
+        let rules = jsRules().filter { rule in
             // Replace the JS keyword rule with TS superset below
             !rule.regex.pattern.contains("const|let|var|function|class|extends|import")
         }
@@ -356,24 +356,4 @@ struct SyntaxHighlighter {
         r(#"\/\*[\s\S]*?\*\/"#, .comment),
     ].compactMap { $0 } }
 
-    // MARK: - Markdown
-
-    private static func markdownRules() -> [SyntaxRule] { [
-        // Fenced code blocks
-        r(#"```[\s\S]*?```|~~~[\s\S]*?~~~"#, .string),
-        // Inline code
-        r(#"`[^`\n]+`"#, .string),
-        // Bold
-        r(#"\*{2}[^\*\n]+\*{2}|_{2}[^_\n]+_{2}"#, .keyword),
-        // Italic
-        r(#"\*[^\*\n]+\*|_[^_\n]+_"#, .funcCall),
-        // Links and images [text](url)
-        r(#"!?\[([^\]]+)\]\([^\)]*\)"#, .constant),
-        // Headings
-        r(#"^#{1,6} [^\n]+"#, .funcDef),
-        // Blockquotes
-        r(#"^> [^\n]+"#, .comment),
-        // Horizontal rules
-        r(#"^[-*_]{3,}\s*$"#, .decorator),
-    ].compactMap { $0 } }
 }

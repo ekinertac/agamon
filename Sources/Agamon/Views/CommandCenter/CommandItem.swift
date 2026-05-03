@@ -37,6 +37,10 @@ struct CommandItem: Identifiable {
             CommandItem(title: "Increase Font Size", subtitle: "⌘+",   icon: "plus.magnifyingglass",  category: .command, action: appState.increaseFontSize),
             CommandItem(title: "Decrease Font Size", subtitle: "⌘−",   icon: "minus.magnifyingglass", category: .command, action: appState.decreaseFontSize),
             CommandItem(title: "Reset Font Size",    subtitle: "⌘0",   icon: "textformat",            category: .command, action: appState.resetFontSize),
+            CommandItem(title: appState.editorLineWrap ? "Disable Line Wrap" : "Enable Line Wrap",
+                        subtitle: nil, icon: "text.word.spacing", category: .command) {
+                appState.editorLineWrap.toggle()
+            },
         ]
     }
 
