@@ -37,10 +37,12 @@ _assemble: $(INFO_PLIST)
 		echo "Warning: $(ICON_SRC) not found — run 'make icon' first"; \
 	fi
 
-# Ad-hoc sign (works locally without a developer certificate).
-# Replace '-' with your Developer ID to produce a distributable build.
+# SIGNING_IDENTITY defaults to ad-hoc for local builds.
+# CI sets it to the Developer ID via the SIGNING_IDENTITY env var.
+SIGNING_IDENTITY ?= -
+
 _sign:
-	codesign --force --deep --sign - \
+	codesign --force --deep --sign "$(SIGNING_IDENTITY)" \
 		--entitlements $(ENTITLEMENTS) \
 		--options runtime \
 		$(APP)
