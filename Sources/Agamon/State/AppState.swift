@@ -15,6 +15,8 @@ extension Notification.Name {
     static let agamonBell = Notification.Name("agamonBell")
     // Posted (no object) to tell the focused editor to open its native find bar.
     static let agamonOpenEditorFind = Notification.Name("agamonOpenEditorFind")
+    // Posted with object: URL to request closing an editor tab (checked for dirty state by EditorPanelView).
+    static let agamonRequestCloseFile = Notification.Name("agamonRequestCloseFile")
 }
 
 @Observable
@@ -622,10 +624,12 @@ final class AppState {
                 return nil
             }
 
-            // Cmd+W while editor focused → close the active editor tab.
-            // Without consume, ShortcutHandler's closeCurrentPane would fire instead.
+            // Cmd+W while editor focused → request closing the active editor tab.
+            // Routes through EditorPanelView so dirty-state check and save dialog run first.
             if mods == .command, event.characters == "w" {
-                if let url = self.selectedFile { self.closeFile(url) }
+                if let url = self.selectedFile {
+                    NotificationCenter.default.post(name: .agamonRequestCloseFile, object: url)
+                }
                 return nil
             }
 

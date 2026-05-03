@@ -164,11 +164,13 @@ final class AgamonTerminalView: LocalProcessTerminalView {
             self, selector: #selector(handleFocusRequest(_:)),
             name: .agamonFocusTerminal, object: nil
         )
-        // Force a full redraw after re-parenting into a new NSHostingView.
-        // SwiftTerm's CALayer needs an explicit invalidation — the normal AppKit dirty-rect
-        // mechanism doesn't catch this because the layer was valid when the view was detached.
+        // Force a full re-layout and redraw after re-parenting into a new NSHostingView.
+        // Reset lastLayoutSize so layout() sends TIOCSWINSZ and redraws tmux content,
+        // which prevents the terminal from appearing blank after a project switch.
         if didLaunch {
+            lastLayoutSize = .zero
             DispatchQueue.main.async { [weak self] in
+                self?.needsLayout = true
                 self?.needsDisplay = true
                 self?.layer?.setNeedsDisplay()
             }

@@ -8,6 +8,7 @@
 // Related: FileEditorView.swift, DiffEditorView.swift (content views),
 //          DiffListView.swift (triggers openDiff), AppState.swift (openFiles / openDiff).
 
+import AppKit
 import SwiftUI
 
 struct EditorPanelView: View {
@@ -45,11 +46,22 @@ struct EditorPanelView: View {
             }
         }
         .background(Theme.Color.surface)
+        .overlay {
+            // Dim the editor when focus is elsewhere, matching terminal pane dimming.
+            if !appState.editorFocused && appState.dimInactivePanes && appState.inactivePaneDimAmount > 0 {
+                Color.black.opacity(appState.inactivePaneDimAmount * 0.6)
+                    .allowsHitTesting(false)
+            }
+        }
         .onAppear {
             for url in appState.openFiles where fileContents[url] == nil { loadFile(url) }
         }
         .onChange(of: appState.openFiles) { _, newFiles in
             for url in newFiles where fileContents[url] == nil { loadFile(url) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .agamonRequestCloseFile)) { note in
+            guard let url = note.object as? URL else { return }
+            handleClose(url: url)
         }
     }
 
@@ -65,7 +77,7 @@ struct EditorPanelView: View {
                             isActive: appState.selectedFile == url,
                             isDirty: dirtyFiles.contains(url),
                             onSelect: { appState.openFile(url) },
-                            onClose: { appState.closeFile(url) }
+                            onClose: { handleClose(url: url) }
                         )
                     }
                 }
@@ -85,6 +97,35 @@ struct EditorPanelView: View {
     }
 
     // MARK: - Helpers
+
+    // Close a tab, showing a save dialog first when the file has unsaved changes.
+    // Enter = Save, Cmd+D = Discard, Escape = Cancel (standard macOS destructive-action pattern).
+    private func handleClose(url: URL) {
+        guard dirtyFiles.contains(url) else { appState.closeFile(url); return }
+
+        let alert = NSAlert()
+        alert.messageText = "Save \"\(url.lastPathComponent)\"?"
+        alert.informativeText = "Your changes will be lost if you don't save."
+        alert.addButton(withTitle: "Save")        // .alertFirstButtonReturn — Enter
+        alert.addButton(withTitle: "Don't Save")  // .alertSecondButtonReturn — Cmd+D
+        alert.addButton(withTitle: "Cancel")      // .alertThirdButtonReturn  — Escape
+        alert.buttons[1].keyEquivalent = "d"
+        alert.buttons[1].keyEquivalentModifierMask = .command
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:   // Save
+            if let content = fileContents[url] {
+                try? content.write(to: url, atomically: true, encoding: .utf8)
+            }
+            dirtyFiles.remove(url)
+            appState.closeFile(url)
+        case .alertSecondButtonReturn:  // Don't Save
+            dirtyFiles.remove(url)
+            appState.closeFile(url)
+        default:                        // Cancel — do nothing
+            break
+        }
+    }
 
     private func contentBinding(for url: URL) -> Binding<String> {
         Binding(

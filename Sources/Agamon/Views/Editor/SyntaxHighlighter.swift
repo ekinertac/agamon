@@ -26,7 +26,7 @@ import AppKit
 // MARK: - Language
 
 enum SyntaxLanguage {
-    case swift, python, javascript, typescript, json, yaml, shell, ruby, go, rust, markdown
+    case swift, python, javascript, typescript, json, yaml, shell, ruby, go, rust, markdown, html
 
     static func detect(fileExtension ext: String) -> SyntaxLanguage? {
         switch ext.lowercased() {
@@ -41,6 +41,7 @@ enum SyntaxLanguage {
         case "go":                         return .go
         case "rs":                         return .rust
         case "md", "markdown":             return .markdown
+        case "html", "htm", "xhtml", "xml", "svg": return .html
         default:                           return nil
         }
     }
@@ -171,6 +172,7 @@ struct SyntaxHighlighter {
         case .go:         return goRules()
         case .rust:       return rustRules()
         case .markdown:   return []  // handled by MarkdownHighlighter
+        case .html:       return htmlRules()
         }
     }
 
@@ -334,6 +336,28 @@ struct SyntaxHighlighter {
         r(#""(?:[^"\\]|\\.)*""#, .string),
         r(#"\/\/[^\n]*"#, .comment),
         r(#"\/\*[\s\S]*?\*\/"#, .comment),
+    ].compactMap { $0 } }
+
+    // MARK: - HTML / XML / SVG
+
+    private static func htmlRules() -> [SyntaxRule] { [
+        // Comments
+        r(#"<!--[\s\S]*?-->"#, .comment),
+        // CDATA sections
+        r(#"<!\[CDATA\[[\s\S]*?\]\]>"#, .string),
+        // DOCTYPE
+        r(#"<!DOCTYPE[^>]*>"#, .decorator),
+        // Tag names inside < > pairs: opening and closing
+        r(#"</?([A-Za-z][A-Za-z0-9\-:.]*)"#, .keyword, group: 1),
+        // Attribute names
+        r(#"\b([a-zA-Z\-:]+)(?=\s*=)"#, .funcDef),
+        // Attribute values (quoted)
+        r(#"'[^']*'"#, .string),
+        r(#""[^"]*""#, .string),
+        // Numbers in attribute values
+        r(#"\b\d+(?:\.\d+)?(?:%|px|em|rem|vh|vw|pt|cm|mm|s|ms)?\b"#, .number),
+        // HTML entities
+        r(#"&[a-zA-Z]+;|&#\d+;|&#x[0-9a-fA-F]+;"#, .constant),
     ].compactMap { $0 } }
 
     // MARK: - Rust

@@ -169,13 +169,14 @@ struct FileTreeView: View {
     }
 
     private func reload() {
-        expandedPaths = []
-        keyboardIndex = 0
         let root = URL(fileURLWithPath: rootPath)
         var cache: [URL: [FileItem]] = [:]
         FileItem.prefill(from: root, depth: 0, into: &cache)
         childrenCache = cache
         rootItems = cache[root] ?? []
+        // Keep only expanded paths that still exist; don't collapse the whole tree.
+        expandedPaths = expandedPaths.filter { FileManager.default.fileExists(atPath: $0.path) }
+        keyboardIndex = min(keyboardIndex, max(0, visibleItems.count - 1))
     }
 }
 

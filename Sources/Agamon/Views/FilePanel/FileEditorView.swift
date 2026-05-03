@@ -95,6 +95,7 @@ struct FileEditorView: View {
 // and paired-character smart backspace.
 final class AgamonEditorTextView: NSTextView {
     var onFocusChange: ((Bool) -> Void)?
+    var fileExtension: String = ""
 
     override func becomeFirstResponder() -> Bool {
         let r = super.becomeFirstResponder()
@@ -117,33 +118,39 @@ final class AgamonEditorTextView: NSTextView {
         let sel    = selectedRange()
         let nsText = storage.string as NSString
 
-        // Check whether the selection spans more than one line
         let selText = sel.length > 0 ? nsText.substring(with: sel) : ""
         guard selText.contains("\n") else { super.insertTab(sender); return }
 
+        // Snapshot all line-start positions BEFORE modifying the string.
+        // Inserting back-to-front keeps earlier positions valid and avoids the
+        // "live NSString shifts under us" bug where pos = NSMaxRange(lr) re-reads
+        // the same line after the tab is inserted.
         let linesRange = nsText.lineRange(for: sel)
-        undoManager?.beginUndoGrouping()
-        var offset = 0
-        var insertedBeforeCursor = 0
-        var totalInserted = 0
+        var lineStarts: [Int] = []
         var pos = linesRange.location
         while pos < NSMaxRange(linesRange) {
             let lr = nsText.lineRange(for: NSRange(location: pos, length: 0))
-            let insertPos = lr.location + offset
-            let range     = NSRange(location: insertPos, length: 0)
-            if shouldChangeText(in: range, replacementString: "\t") {
-                storage.replaceCharacters(in: range, with: "\t")
-                didChangeText()
-                offset         += 1
-                totalInserted  += 1
-                if lr.location <= sel.location { insertedBeforeCursor += 1 }
-            }
+            lineStarts.append(lr.location)
             if lr.length == 0 { break }
             pos = NSMaxRange(lr)
         }
+        guard !lineStarts.isEmpty else { return }
+
+        undoManager?.beginUndoGrouping()
+        var insertedCount = 0
+        for start in lineStarts.reversed() {
+            let range = NSRange(location: start, length: 0)
+            if shouldChangeText(in: range, replacementString: "\t") {
+                storage.replaceCharacters(in: range, with: "\t")
+                didChangeText()
+                insertedCount += 1
+            }
+        }
         undoManager?.endUndoGrouping()
-        setSelectedRange(NSRange(location: sel.location + insertedBeforeCursor,
-                                 length: sel.length + (totalInserted - insertedBeforeCursor)))
+
+        let insertedBefore = lineStarts.filter { $0 < sel.location }.count
+        setSelectedRange(NSRange(location: sel.location + insertedBefore,
+                                 length: sel.length + insertedCount - insertedBefore))
     }
 
     // Remove one level of indentation (one tab or up to 4 spaces) from every line
@@ -192,9 +199,10 @@ final class AgamonEditorTextView: NSTextView {
     // Opening brackets always auto-close. Quotes auto-close unless the cursor is
     // adjacent to an alphanumeric character (e.g. typing ' inside a word).
     // Wraps any active selection in the pair instead of replacing it.
-    private static let bracketPairs: [String: String] = ["(": ")", "[": "]", "{": "}"]
-    private static let quotePairs:   [String: String] = ["\"": "\"", "'": "'", "`": "`"]
-    private static let allClosers:   Set<String>       = [")", "]", "}", "\"", "'", "`"]
+    private static let bracketPairs:  [String: String] = ["(": ")", "[": "]", "{": "}"]
+    private static let quotePairs:    [String: String] = ["\"": "\"", "'": "'", "`": "`"]
+    private static let allClosers:    Set<String>      = [")", "]", "}", "\"", "'", "`", ">"]
+    private static let htmlExtensions: Set<String>     = ["html", "htm", "xml", "xhtml", "svg"]
 
     override func insertText(_ string: Any, replacementRange: NSRange) {
         guard isEditable,
@@ -212,6 +220,19 @@ final class AgamonEditorTextView: NSTextView {
            nsText.substring(with: NSRange(location: sel.location, length: 1)) == str,
            !Self.quotePairs.keys.contains(str) {   // brackets only — quotes need context
             setSelectedRange(NSRange(location: sel.location + 1, length: 0))
+            return
+        }
+
+        // HTML/XML: auto-close angle brackets
+        if str == "<", Self.htmlExtensions.contains(fileExtension.lowercased()) {
+            if sel.length > 0 {
+                let inner = nsText.substring(with: sel)
+                super.insertText("<" + inner + ">", replacementRange: replacementRange)
+                setSelectedRange(NSRange(location: sel.location + 1, length: sel.length))
+            } else {
+                super.insertText("<>", replacementRange: replacementRange)
+                setSelectedRange(NSRange(location: sel.location + 1, length: 0))
+            }
             return
         }
 
@@ -271,7 +292,7 @@ final class AgamonEditorTextView: NSTextView {
         let nsText  = storage.string as NSString
         let prevCh  = Character(UnicodeScalar(nsText.character(at: sel.location - 1))!)
         let allPairs: [Character: Character] = [
-            "(": ")", "[": "]", "{": "}", "\"": "\"", "'": "'", "`": "`"
+            "(": ")", "[": "]", "{": "}", "\"": "\"", "'": "'", "`": "`", "<": ">"
         ]
         if let closer = allPairs[prevCh], sel.location < nsText.length {
             let nextCh = Character(UnicodeScalar(nsText.character(at: sel.location))!)
@@ -354,8 +375,12 @@ final class LineNumberRulerView: NSRulerView {
             guard lineY + usedRect.height > rect.minY - 2,
                   lineY < rect.maxY + 2 else { return }
 
+            // Use < for lines that end with a newline so the cursor sitting at
+            // the start of the NEXT line doesn't highlight BOTH lines at once.
+            // The last line (no trailing newline) uses <= to include end-of-file position.
+            let lineEnd  = charRange.location + charRange.length
             let isActive = cursorLoc >= charRange.location
-                        && cursorLoc <= charRange.location + charRange.length
+                        && (lineEnd < nsText.length ? cursorLoc < lineEnd : cursorLoc <= lineEnd)
             let color    = isActive ? self.activeColor : self.dimColor
             let label    = "\(lineNum)" as NSString
             let attrs: [NSAttributedString.Key: Any] = [.font: self.lineFont, .foregroundColor: color]
@@ -445,6 +470,7 @@ struct EditorTextView: NSViewRepresentable {
         textView.isAutomaticLinkDetectionEnabled      = false
 
         textView.onFocusChange = onFocusChange
+        textView.fileExtension = fileExtension
         textView.delegate      = context.coordinator
         context.coordinator.textView = textView
         scrollView.documentView = textView
@@ -471,6 +497,9 @@ struct EditorTextView: NSViewRepresentable {
             textView.backgroundColor   = themeBackground
         }
 
+        if let tv = scrollView.documentView as? AgamonEditorTextView, tv.fileExtension != fileExtension {
+            tv.fileExtension = fileExtension
+        }
         if prevParent.lineWrap != lineWrap {
             applyLineWrap(lineWrap, to: textView, scrollView: scrollView)
             scrollView.verticalRulerView?.needsDisplay = true
