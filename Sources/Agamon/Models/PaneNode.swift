@@ -151,6 +151,32 @@ indirect enum PaneNode: Identifiable, Codable, Hashable {
         }
     }
 
+    func containsLeaf(_ leafID: UUID) -> Bool {
+        switch self {
+        case .leaf(let id, _): return id == leafID
+        case .split(_, _, _, let first, let second):
+            return first.containsLeaf(leafID) || second.containsLeaf(leafID)
+        }
+    }
+
+    // Deepest ancestor split on `axis` that contains the leaf anywhere in its subtree.
+    // Arrow direction determines ratio increase/decrease independently of first-vs-second position:
+    //   →/↓ increases ratio (divider moves forward); ←/↑ decreases (divider moves backward).
+    // Effect on the focused pane follows automatically: first-child pane grows on →, shrinks on ←;
+    // second-child pane shrinks on →, grows on ←.
+    func nearestSplitContaining(_ leafID: UUID, axis: SplitAxis) -> UUID? {
+        switch self {
+        case .leaf: return nil
+        case .split(let id, let a, _, let first, let second):
+            // Recurse first — deepest (most direct) ancestor wins.
+            if let found = first.nearestSplitContaining(leafID, axis: axis)
+                        ?? second.nearestSplitContaining(leafID, axis: axis) {
+                return found
+            }
+            return (a == axis && containsLeaf(leafID)) ? id : nil
+        }
+    }
+
     // Return a new tree with the split node's ratio updated.
     func updatingRatio(splitID: UUID, newRatio: CGFloat) -> PaneNode {
         switch self {

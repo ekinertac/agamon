@@ -109,6 +109,7 @@ final class AppState {
     }
     // Loaded per-project in loadEditorState(for:) — starts false until first project loads.
     var editorPanelVisible: Bool = false
+    var editorPanelWidth: CGFloat = Theme.EditorPanel.width
     // Bumped by focusEditor() to request first-responder on the editor text view.
     // EditorTextView observes this via its prop and grabs focus when the value changes.
     // Used instead of a notification because the editor view isn't mounted until
@@ -560,6 +561,51 @@ final class AppState {
         attentionPaneIDs.remove(neighborID)
         tabFocusMemory[tab.id] = neighborID
         NotificationCenter.default.post(name: .agamonFocusTerminal, object: neighborID)
+    }
+
+    // MARK: - Resize
+
+    // Context-aware: resizes the editor panel when editor is focused, the active pane otherwise.
+    func resizeActiveContent(direction: PaneNavigationDirection) {
+        if editorFocused {
+            resizeEditorPanel(direction: direction)
+        } else {
+            resizeFocusedPane(direction: direction)
+        }
+    }
+
+    private let paneResizeStep: CGFloat = 0.05
+    private let editorResizeStep: CGFloat = 40
+
+    // Moves the nearest divider on the relevant axis in the arrow direction by a fixed step.
+    // →/↓ increases ratio, ←/↑ decreases it. Works regardless of whether the focused pane
+    // is the first or second child: the divider moves, and the pane grows or shrinks accordingly.
+    private func resizeFocusedPane(direction: PaneNavigationDirection) {
+        guard let paneID = focusedPaneID,
+              let pi = projects.firstIndex(where: { $0.id == selectedProjectID }),
+              let ti = projects[pi].tabs.firstIndex(where: { $0.id == selectedTabID })
+        else { return }
+        let root = projects[pi].tabs[ti].rootPane
+        guard let splitID = root.nearestSplitContaining(paneID, axis: direction.axis),
+              let current = root.ratio(for: splitID)
+        else { return }
+        let newRatio = direction.isForward
+            ? min(0.9, current + paneResizeStep)
+            : max(0.1, current - paneResizeStep)
+        projects[pi].tabs[ti].rootPane = root.updatingRatio(splitID: splitID, newRatio: newRatio)
+        persist()
+    }
+
+    // ← grows the editor (its left edge moves left); → shrinks it.
+    private func resizeEditorPanel(direction: PaneNavigationDirection) {
+        switch direction {
+        case .left:
+            editorPanelWidth += editorResizeStep
+        case .right:
+            editorPanelWidth = max(Theme.EditorPanel.minWidth, editorPanelWidth - editorResizeStep)
+        case .up, .down:
+            break
+        }
     }
 
     // MARK: - Pane / Split Actions

@@ -9,7 +9,8 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppState.self) private var appState
-    @State private var editorPanelWidth: CGFloat = Theme.EditorPanel.width
+    // editorPanelWidth lives in AppState so keyboard resize shortcuts can modify it.
+    // editorPanelBaseWidth is drag-local: captures width at gesture start so the delta math works.
     @State private var editorPanelBaseWidth: CGFloat = Theme.EditorPanel.width
     @State private var filePanelWidth: CGFloat = Theme.FilePanel.width
     @State private var filePanelBaseWidth: CGFloat = Theme.FilePanel.width
@@ -37,19 +38,19 @@ struct ContentView: View {
             // Column 3: text editor (shown when a file is open)
             if appState.editorPanelVisible {
                 ResizeDivider {
-                    editorPanelWidth = max(220, editorPanelBaseWidth - $0)
+                    appState.editorPanelWidth = max(Theme.EditorPanel.minWidth, editorPanelBaseWidth - $0)
                 } onEnd: {
-                    editorPanelBaseWidth = editorPanelWidth
+                    editorPanelBaseWidth = appState.editorPanelWidth
                 }
                 EditorPanelView()
-                    .frame(width: editorPanelWidth)
+                    .frame(width: appState.editorPanelWidth)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
 
             // Column 4: file explorer
             if appState.filePanelVisible {
                 ResizeDivider {
-                    filePanelWidth = max(Theme.FilePanel.minWidth, min(Theme.FilePanel.maxWidth, filePanelBaseWidth - $0))
+                    filePanelWidth = max(Theme.FilePanel.minWidth, filePanelBaseWidth - $0)
                 } onEnd: {
                     filePanelBaseWidth = filePanelWidth
                 }

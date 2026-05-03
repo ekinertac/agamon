@@ -65,6 +65,16 @@ struct ShortcutHandler: View {
                     .keyboardShortcut(KeyEquivalent(Character(String(n))), modifiers: .control)
             }
 
+            // Pane / editor resize ⌘⌃⌥arrow (context-aware: terminals or editor panel)
+            Button("") { appState.resizeActiveContent(direction: .left) }
+                .keyboardShortcut(.leftArrow,  modifiers: [.command, .control, .option])
+            Button("") { appState.resizeActiveContent(direction: .right) }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .control, .option])
+            Button("") { appState.resizeActiveContent(direction: .up) }
+                .keyboardShortcut(.upArrow,    modifiers: [.command, .control, .option])
+            Button("") { appState.resizeActiveContent(direction: .down) }
+                .keyboardShortcut(.downArrow,  modifiers: [.command, .control, .option])
+
             // Pane navigation ⌘⌥arrow
             Button("") { appState.focusPane(direction: .left) }
                 .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
