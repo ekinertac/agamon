@@ -25,9 +25,9 @@ enum Theme {
         static let textSecondary   = SwiftUI.Color.white.opacity(0.55)
         static let textTertiary    = SwiftUI.Color.white.opacity(0.28)
 
-        // Accent — used sparingly: selected items, active indicators, primary buttons
-        static let accent          = SwiftUI.Color(r: 74,  g: 158, b: 255)  // #4A9EFF
-        static let accentMuted     = SwiftUI.Color(r: 74,  g: 158, b: 255).opacity(0.15)
+        // Accent — follows the user's System Settings → Appearance → Accent Color selection.
+        static let accent          = SwiftUI.Color.accentColor
+        static let accentMuted     = SwiftUI.Color.accentColor.opacity(0.15)
 
         // Semantic
         static let danger          = SwiftUI.Color(r: 255, g: 94,  b: 94)
