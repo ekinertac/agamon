@@ -81,6 +81,23 @@ struct TerminalPaneView: View {
                     .animation(.easeInOut(duration: 0.2), value: appState.attentionPaneIDs.contains(paneID))
             }
 
+            // Zoom indicator — top-right badge when this pane is zoomed and siblings exist.
+            let siblingCount = (appState.selectedTab?.rootPane.leafIDs().count ?? 1) - 1
+            if appState.zoomedPaneID == paneID && siblingCount > 0 {
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        Spacer()
+                        ZoomIndicatorBadge(hiddenCount: siblingCount) {
+                            appState.togglePaneZoom()
+                        }
+                        .padding(.top, Theme.Spacing.sm)
+                        .padding(.trailing, Theme.Spacing.sm)
+                    }
+                    Spacer()
+                }
+                .transition(.opacity)
+            }
+
             // Terminal find bar — overlaid top-right, shown when this pane owns the search.
             if isSearchVisible {
                 VStack(spacing: 0) {
@@ -339,4 +356,37 @@ final class TerminalCoordinator: NSObject, LocalProcessTerminalViewDelegate {
     func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
     func processTerminated(source: TerminalView, exitCode: Int32?) {}
+}
+
+// MARK: - Zoom Indicator Badge
+
+// Small pill shown in the top-right corner of a zoomed pane when other panes are hidden.
+// Tapping it exits zoom and restores the full split layout.
+struct ZoomIndicatorBadge: View {
+    let hiddenCount: Int
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 7) {
+                Image(systemName: "rectangle.3.group")
+                    .font(.system(size: 13, weight: .medium))
+                Text("\(hiddenCount) hidden")
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+            }
+            .foregroundStyle(Theme.Color.textSecondary)
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                    .fill(Theme.Color.surface.opacity(0.92))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                            .strokeBorder(Color.accentColor, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Exit fullscreen (⌘⇧↩)")
+    }
 }
