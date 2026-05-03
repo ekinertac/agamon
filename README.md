@@ -54,26 +54,21 @@ Signed and notarized — no Gatekeeper prompts.
 ```bash
 git clone https://github.com/ekinertac/agamon
 cd agamon
-
-# Generate the app icon (requires icon.png in the project root)
-make icon
-
-# Build and sign with ad-hoc certificate
 make bundle
-
-# Open
 open Agamon.app
 ```
 
+`make bundle` compiles a release build, assembles `Agamon.app`, and signs it with an ad-hoc certificate. Run `make clean` to wipe the build artifacts.
+
 ## Themes
 
-Agamon ships with 50+ themes in [Ghostty format](https://ghostty.org/docs/config/reference#theme). Drop additional `.conf` theme files into:
+Agamon ships with 50+ themes in [Ghostty format](https://ghostty.org/docs/config/reference#theme). To add your own, drop `.conf` theme files into:
 
 ```
 ~/.config/agamon/themes/
 ```
 
-and restart the app — they appear immediately in Settings → Appearance.
+They appear in **Settings → Appearance** on next launch.
 
 ## Requirements
 
