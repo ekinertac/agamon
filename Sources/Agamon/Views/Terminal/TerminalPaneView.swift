@@ -36,7 +36,7 @@ struct TerminalPaneView: View {
     @FocusState private var searchFocused: Bool
     private var isSearchVisible: Bool { appState.terminalSearchPaneID == paneID }
 
-    var isFocused: Bool { appState.focusedPaneID == paneID }
+    var isFocused: Bool { appState.focusedPaneID == paneID && !appState.editorFocused }
 
     private var activeThemeName: String {
         colorScheme == .dark ? appState.selectedDarkThemeName : appState.selectedLightThemeName

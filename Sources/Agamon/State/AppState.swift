@@ -48,10 +48,13 @@ final class AppState {
     // Session-only (not persisted). Saves last focused paneID per tab so switching
     // back to a tab restores the exact pane that was active when you left it.
     private var tabFocusMemory: [UUID: UUID] = [:]
+    // Maps projectID → last active tabID so project switches restore the right tab.
+    private var projectTabMemory: [UUID: UUID] = [:]
 
     private func rememberFocus() {
         guard let tabID = selectedTabID, let paneID = focusedPaneID else { return }
         tabFocusMemory[tabID] = paneID
+        if let projectID = selectedProjectID { projectTabMemory[projectID] = tabID }
     }
 
     // Restore the remembered pane for a tab, falling back to firstLeaf if it no longer exists.
@@ -67,6 +70,9 @@ final class AppState {
         }
         focusedPaneID = paneID
         attentionPaneIDs.remove(paneID)
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .agamonFocusTerminal, object: paneID)
+        }
     }
 
     private func evictTerminalViews(for pane: PaneNode) {
@@ -225,15 +231,28 @@ final class AppState {
             selectedProjectID = projects.last?.id
             selectedTabID = projects.last?.tabs.first?.id
             focusedPaneID = projects.last?.tabs.first?.rootPane.firstLeafID
+            refocusActiveTerminal()
         }
         persist()
     }
 
     func selectProject(_ id: UUID) {
+        rememberFocus()
         selectedProjectID = id
-        let firstTab = projects.first { $0.id == id }?.tabs.first
-        selectedTabID = firstTab?.id
-        focusedPaneID = firstTab?.rootPane.firstLeafID
+        guard let project = projects.first(where: { $0.id == id }) else { return }
+        let tab: WorkTab?
+        if let rememberedID = projectTabMemory[id],
+           let remembered = project.tabs.first(where: { $0.id == rememberedID }) {
+            tab = remembered
+        } else {
+            tab = project.tabs.first
+        }
+        selectedTabID = tab?.id
+        if let tab {
+            restoreFocus(for: tab)
+        } else {
+            focusedPaneID = nil
+        }
         loadEditorState(for: id)
     }
 
@@ -271,6 +290,7 @@ final class AppState {
             let fallback = projects[pi].tabs.last
             selectedTabID = fallback?.id
             focusedPaneID = fallback?.rootPane.firstLeafID
+            refocusActiveTerminal()
         }
         persist()
     }
