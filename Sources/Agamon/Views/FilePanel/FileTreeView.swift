@@ -6,10 +6,28 @@
 //
 // Keyboard nav: ↑↓ move, → expands dir or enters first child, ← collapses or goes to
 // parent, Enter opens file / toggles dir, Escape releases focus → terminal.
+// Context menu on each row: New File, New Folder, Rename, Delete (trash).
 // Related: FilePanelView.swift (hosts this), EditorPanelView.swift (displays opened files),
 //          AppState.swift (openFile, focusEditor, refocusActiveTerminal).
 
 import SwiftUI
+
+// Shows an NSAlert with a text field accessory. Returns trimmed input or nil if cancelled/empty.
+@discardableResult
+private func askForName(title: String, placeholder: String, initial: String = "") -> String? {
+    let alert = NSAlert()
+    alert.messageText = title
+    alert.addButton(withTitle: "OK")
+    alert.addButton(withTitle: "Cancel")
+    let tf = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 22))
+    tf.stringValue = initial
+    tf.placeholderString = placeholder
+    alert.accessoryView = tf
+    alert.window.initialFirstResponder = tf
+    guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+    let name = tf.stringValue.trimmingCharacters(in: .whitespaces)
+    return name.isEmpty ? nil : name
+}
 
 struct FileTreeView: View {
     let rootPath: String
@@ -45,7 +63,8 @@ struct FileTreeView: View {
                             highlightedFile: $highlightedFile,
                             isKeyboardSelected: internalFocus && idx == keyboardIndex,
                             gitBadge: gitStatus[item.url],
-                            onToggle: { toggleExpanded(item) }
+                            onToggle: { toggleExpanded(item) },
+                            onReload: { reload() }
                         )
                         .id(item.id)
                     }
@@ -162,8 +181,10 @@ struct FileTreeView: View {
 
 // MARK: - Row
 
-// Pure presentation — receives expansion state, calls back via onToggle.
+// Pure presentation — receives expansion state, calls back via onToggle / onReload.
 // Children are NOT rendered here; the flat list in FileTreeView handles ordering.
+// Context menu (New File, New Folder, Rename, Delete) lives here and delegates
+// filesystem changes back to FileTreeView via onReload.
 struct FileTreeRow: View {
     let item: FileItem
     let isExpanded: Bool
@@ -171,6 +192,7 @@ struct FileTreeRow: View {
     var isKeyboardSelected: Bool = false
     var gitBadge: String? = nil
     var onToggle: () -> Void = {}
+    var onReload: () -> Void = {}
 
     @Environment(AppState.self) private var appState
     @State private var isHovered = false
@@ -237,6 +259,86 @@ struct FileTreeRow: View {
                 appState.focusEditor()
             } else {
                 highlightedFile = item.url
+            }
+        }
+        .contextMenu {
+            Button("New File") {
+                // Create inside the directory if item is a dir, otherwise alongside it.
+                let parentDir = item.isDirectory
+                    ? item.url
+                    : item.url.deletingLastPathComponent()
+                guard let name = askForName(title: "New File", placeholder: "filename.swift") else { return }
+                let newURL = parentDir.appendingPathComponent(name)
+                do {
+                    try "".write(to: newURL, atomically: true, encoding: .utf8)
+                    onReload()
+                    appState.openFile(newURL)
+                } catch {
+                    let err = NSAlert()
+                    err.messageText = "Could not create file"
+                    err.informativeText = error.localizedDescription
+                    err.runModal()
+                }
+            }
+
+            Button("New Folder") {
+                let parentDir = item.isDirectory
+                    ? item.url
+                    : item.url.deletingLastPathComponent()
+                guard let name = askForName(title: "New Folder", placeholder: "FolderName") else { return }
+                let newURL = parentDir.appendingPathComponent(name)
+                do {
+                    try FileManager.default.createDirectory(at: newURL, withIntermediateDirectories: false)
+                    onReload()
+                } catch {
+                    let err = NSAlert()
+                    err.messageText = "Could not create folder"
+                    err.informativeText = error.localizedDescription
+                    err.runModal()
+                }
+            }
+
+            Divider()
+
+            Button("Rename") {
+                guard let newName = askForName(
+                    title: "Rename \"\(item.name)\"",
+                    placeholder: item.name,
+                    initial: item.name
+                ) else { return }
+                let newURL = item.url.deletingLastPathComponent().appendingPathComponent(newName)
+                do {
+                    try FileManager.default.moveItem(at: item.url, to: newURL)
+                    // Keep AppState in sync for any open editor tabs referencing the old URL.
+                    appState.renameOpenFile(from: item.url, to: newURL)
+                    onReload()
+                } catch {
+                    let err = NSAlert()
+                    err.messageText = "Could not rename"
+                    err.informativeText = error.localizedDescription
+                    err.runModal()
+                }
+            }
+
+            Button("Delete", role: .destructive) {
+                let confirm = NSAlert()
+                confirm.messageText = "Move \"\(item.name)\" to Trash?"
+                confirm.informativeText = "This action can be undone from the Trash."
+                confirm.addButton(withTitle: "Move to Trash")
+                confirm.addButton(withTitle: "Cancel")
+                confirm.alertStyle = .warning
+                guard confirm.runModal() == .alertFirstButtonReturn else { return }
+                do {
+                    try FileManager.default.trashItem(at: item.url, resultingItemURL: nil)
+                    // Remove from open files if it was open.
+                    appState.renameOpenFile(from: item.url, to: nil)
+                    onReload()
+                } catch {
+                    let err = NSAlert()
+                    err.messageText = "Could not delete"
+                    err.informativeText = error.localizedDescription
+                    err.runModal()
+                }
             }
         }
     }

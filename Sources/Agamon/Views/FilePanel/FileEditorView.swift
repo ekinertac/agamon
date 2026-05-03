@@ -1,8 +1,9 @@
 // Lightweight inline editor for files the agent produces.
 // Wraps NSTextView (AppKit) because SwiftUI's TextEditor lacks: monospace font control,
 // disabling smart quotes/dashes, and proper dark background without fighting system appearance.
-// Cmd+S saves. isDirty is lifted to the parent (EditorPanelView) so the dirty state persists
-// across tab switches without re-loading or losing unsaved edits.
+// Cmd+S saves. Dirty state is shown as a dot in the tab (EditorPanelView) only — no save button.
+// A slim bottom status bar shows the cursor position (line:col) and any load/save errors.
+// isDirty is lifted to the parent (EditorPanelView) so dirty state persists across tab switches.
 // Related: EditorPanelView.swift (hosts this, owns content + dirty state, renders the tab bar),
 //          FileTreeView.swift (double-click triggers appState.openFile which shows this).
 
@@ -18,6 +19,8 @@ struct FileEditorView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.colorScheme) private var colorScheme
     @State private var saveError: String?
+    @State private var cursorLine: Int = 1
+    @State private var cursorCol: Int  = 1
 
     private var activeTheme: TerminalTheme? {
         let name = colorScheme == .dark ? appState.selectedDarkThemeName : appState.selectedLightThemeName
@@ -26,11 +29,6 @@ struct FileEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Status bar: only visible when there's something to show
-            if isDirty || saveError != nil || loadError != nil {
-                statusBar
-                Rectangle().fill(Theme.Color.border).frame(height: 1)
-            }
             EditorTextView(
                 text: $content,
                 onChange: { isDirty = true },
@@ -40,39 +38,39 @@ struct FileEditorView: View {
                 themePalette: activeTheme?.rawPalette ?? [],
                 themeForeground: activeTheme?.foreground ?? NSColor(white: 0.85, alpha: 1),
                 themeBackground: activeTheme?.background ?? NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1),
-                onFocusChange: { focused in appState.editorFocused = focused }
+                onFocusChange: { focused in appState.editorFocused = focused },
+                onCursorChange: { line, col in cursorLine = line; cursorCol = col }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Rectangle().fill(Theme.Color.border).frame(height: 1)
+            statusBar
         }
-        // Hidden button so Cmd+S fires even when the explicit Save button isn't rendered
         .background {
             Button("") { save() }
                 .keyboardShortcut("s", modifiers: .command)
                 .hidden()
         }
-        .onChange(of: url) { saveError = nil }
+        .onChange(of: url) { saveError = nil; cursorLine = 1; cursorCol = 1 }
     }
 
     private var statusBar: some View {
         HStack(spacing: Theme.Spacing.sm) {
             if let error = saveError ?? loadError {
+                Image(systemName: "exclamationmark.circle")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.Color.danger)
                 Text(error)
                     .font(.system(size: Theme.FontSize.xs))
                     .foregroundStyle(Theme.Color.danger)
                     .lineLimit(1)
-            } else {
-                Text("Unsaved changes")
-                    .font(.system(size: Theme.FontSize.xs))
-                    .foregroundStyle(Theme.Color.textTertiary)
             }
             Spacer()
-            if isDirty {
-                Button("Save") { save() }
-                    .buttonStyle(PrimaryButtonStyle(compact: true))
-            }
+            Text("Ln \(cursorLine), Col \(cursorCol)")
+                .font(.system(size: Theme.FontSize.xs, design: .monospaced))
+                .foregroundStyle(Theme.Color.textTertiary)
         }
         .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.xs)
+        .padding(.vertical, 3)
         .background(Theme.Color.surface)
     }
 
@@ -93,6 +91,8 @@ struct FileEditorView: View {
 // the editor text view from terminals (AgamonTerminalView) and sheet text fields.
 // Also reports first-responder changes via onFocusChange so AppState can gate
 // the terminal search path in openFind() (Cmd+F) when the editor has keyboard focus.
+// Houses all smart editing behaviours: Tab indent, Shift+Tab de-indent, auto-pairs,
+// and paired-character smart backspace.
 final class AgamonEditorTextView: NSTextView {
     var onFocusChange: ((Bool) -> Void)?
 
@@ -108,65 +108,278 @@ final class AgamonEditorTextView: NSTextView {
         return r
     }
 
+    // MARK: Tab / Shift-Tab indent
+
+    // Single line / no selection: insert a real tab character.
+    // Multi-line selection: add one tab at the start of every selected line (grouped undo).
+    override func insertTab(_ sender: Any?) {
+        guard let storage = textStorage, isEditable else { super.insertTab(sender); return }
+        let sel    = selectedRange()
+        let nsText = storage.string as NSString
+
+        // Check whether the selection spans more than one line
+        let selText = sel.length > 0 ? nsText.substring(with: sel) : ""
+        guard selText.contains("\n") else { super.insertTab(sender); return }
+
+        let linesRange = nsText.lineRange(for: sel)
+        undoManager?.beginUndoGrouping()
+        var offset = 0
+        var insertedBeforeCursor = 0
+        var totalInserted = 0
+        var pos = linesRange.location
+        while pos < NSMaxRange(linesRange) {
+            let lr = nsText.lineRange(for: NSRange(location: pos, length: 0))
+            let insertPos = lr.location + offset
+            let range     = NSRange(location: insertPos, length: 0)
+            if shouldChangeText(in: range, replacementString: "\t") {
+                storage.replaceCharacters(in: range, with: "\t")
+                didChangeText()
+                offset         += 1
+                totalInserted  += 1
+                if lr.location <= sel.location { insertedBeforeCursor += 1 }
+            }
+            if lr.length == 0 { break }
+            pos = NSMaxRange(lr)
+        }
+        undoManager?.endUndoGrouping()
+        setSelectedRange(NSRange(location: sel.location + insertedBeforeCursor,
+                                 length: sel.length + (totalInserted - insertedBeforeCursor)))
+    }
+
     // Remove one level of indentation (one tab or up to 4 spaces) from every line
     // that intersects the current selection. Uses shouldChangeText/didChangeText so
     // undo is registered automatically; all removals are grouped into one undo step.
     override func insertBacktab(_ sender: Any?) {
-        guard let storage = textStorage, isEditable else {
-            super.insertBacktab(sender)
-            return
-        }
-
-        let sel   = selectedRange()
-        let nsStr = storage.string as NSString
+        guard let storage = textStorage, isEditable else { super.insertBacktab(sender); return }
+        let sel        = selectedRange()
+        let nsStr      = storage.string as NSString
         let linesRange = nsStr.lineRange(for: sel)
-
-        // Collect (lineStart, charsToRemove) for every line in the selection range.
         var removals: [(start: Int, count: Int)] = []
         var pos = linesRange.location
         while pos < NSMaxRange(linesRange) {
             let lr   = nsStr.lineRange(for: NSRange(location: pos, length: 0))
             let line = nsStr.substring(with: lr)
-            var n = 0
+            var n    = 0
             if line.hasPrefix("\t") {
                 n = 1
             } else {
-                for ch in line.unicodeScalars {
-                    guard ch == " " && n < 4 else { break }
-                    n += 1
-                }
+                for ch in line.unicodeScalars { guard ch == " " && n < 4 else { break }; n += 1 }
             }
             removals.append((start: lr.location, count: n))
             if lr.length == 0 { break }
             pos = NSMaxRange(lr)
         }
-
         guard removals.contains(where: { $0.count > 0 }) else { return }
-
-        // Apply forward, tracking cumulative offset so ranges stay valid after each deletion.
         undoManager?.beginUndoGrouping()
-        var offset = 0
-        var removedBeforeCursor = 0
-        var totalRemoved = 0
+        var offset = 0, removedBeforeCursor = 0, totalRemoved = 0
         for (start, count) in removals {
             guard count > 0 else { continue }
-            let loc   = start - offset
-            let range = NSRange(location: loc, length: count)
+            let range = NSRange(location: start - offset, length: count)
             if shouldChangeText(in: range, replacementString: "") {
                 storage.replaceCharacters(in: range, with: "")
                 didChangeText()
-                offset += count
-                totalRemoved += count
-                if start < sel.location {
-                    removedBeforeCursor += min(start + count, sel.location) - start
-                }
+                offset += count; totalRemoved += count
+                if start < sel.location { removedBeforeCursor += min(start + count, sel.location) - start }
             }
         }
         undoManager?.endUndoGrouping()
+        setSelectedRange(NSRange(location: max(linesRange.location, sel.location - removedBeforeCursor),
+                                 length: max(0, sel.length - (totalRemoved - removedBeforeCursor))))
+    }
 
-        let newLoc = max(linesRange.location, sel.location - removedBeforeCursor)
-        let newLen = max(0, sel.length - (totalRemoved - removedBeforeCursor))
-        setSelectedRange(NSRange(location: newLoc, length: newLen))
+    // MARK: Auto-pairs
+
+    // Opening brackets always auto-close. Quotes auto-close unless the cursor is
+    // adjacent to an alphanumeric character (e.g. typing ' inside a word).
+    // Wraps any active selection in the pair instead of replacing it.
+    private static let bracketPairs: [String: String] = ["(": ")", "[": "]", "{": "}"]
+    private static let quotePairs:   [String: String] = ["\"": "\"", "'": "'", "`": "`"]
+    private static let allClosers:   Set<String>       = [")", "]", "}", "\"", "'", "`"]
+
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        guard isEditable,
+              let str = (string as? String) ?? (string as? NSAttributedString)?.string,
+              str.count == 1,
+              let storage = textStorage else {
+            super.insertText(string, replacementRange: replacementRange); return
+        }
+
+        let sel    = selectedRange()
+        let nsText = storage.string as NSString
+
+        // Skip over existing matching closer when cursor sits right before it
+        if Self.allClosers.contains(str), sel.length == 0, sel.location < nsText.length,
+           nsText.substring(with: NSRange(location: sel.location, length: 1)) == str,
+           !Self.quotePairs.keys.contains(str) {   // brackets only — quotes need context
+            setSelectedRange(NSRange(location: sel.location + 1, length: 0))
+            return
+        }
+
+        // Bracket auto-pair
+        if let closer = Self.bracketPairs[str] {
+            if sel.length > 0 {
+                let inner = nsText.substring(with: sel)
+                super.insertText(str + inner + closer, replacementRange: replacementRange)
+                setSelectedRange(NSRange(location: sel.location + 1, length: sel.length))
+            } else {
+                super.insertText(str + closer, replacementRange: replacementRange)
+                setSelectedRange(NSRange(location: sel.location + 1, length: 0))
+            }
+            return
+        }
+
+        // Quote auto-pair — skip if adjacent to word character
+        if Self.quotePairs[str] != nil {
+            let prevChar: Character? = sel.location > 0
+                ? Character(UnicodeScalar(nsText.character(at: sel.location - 1))!)
+                : nil
+            let nextChar: Character? = sel.location < nsText.length
+                ? Character(UnicodeScalar(nsText.character(at: sel.location))!)
+                : nil
+
+            if let next = nextChar, next.isLetter || next.isNumber {
+                // Inside a word — plain insert
+                super.insertText(string, replacementRange: replacementRange); return
+            }
+            // Skip over matching closing quote
+            if sel.length == 0, let next = nextChar, String(next) == str {
+                setSelectedRange(NSRange(location: sel.location + 1, length: 0)); return
+            }
+            // Don't double-close after a quote character
+            if let prev = prevChar, String(prev) == str, sel.length == 0 {
+                super.insertText(string, replacementRange: replacementRange); return
+            }
+            if sel.length > 0 {
+                let inner = nsText.substring(with: sel)
+                super.insertText(str + inner + str, replacementRange: replacementRange)
+                setSelectedRange(NSRange(location: sel.location + 1, length: sel.length))
+            } else {
+                super.insertText(str + str, replacementRange: replacementRange)
+                setSelectedRange(NSRange(location: sel.location + 1, length: 0))
+            }
+            return
+        }
+
+        super.insertText(string, replacementRange: replacementRange)
+    }
+
+    // Delete both characters when backspacing onto an empty auto-paired bracket/quote.
+    override func deleteBackward(_ sender: Any?) {
+        guard isEditable, let storage = textStorage else { super.deleteBackward(sender); return }
+        let sel = selectedRange()
+        guard sel.length == 0, sel.location > 0 else { super.deleteBackward(sender); return }
+        let nsText  = storage.string as NSString
+        let prevCh  = Character(UnicodeScalar(nsText.character(at: sel.location - 1))!)
+        let allPairs: [Character: Character] = [
+            "(": ")", "[": "]", "{": "}", "\"": "\"", "'": "'", "`": "`"
+        ]
+        if let closer = allPairs[prevCh], sel.location < nsText.length {
+            let nextCh = Character(UnicodeScalar(nsText.character(at: sel.location))!)
+            if nextCh == closer {
+                let range = NSRange(location: sel.location - 1, length: 2)
+                if shouldChangeText(in: range, replacementString: "") {
+                    storage.replaceCharacters(in: range, with: "")
+                    didChangeText()
+                }
+                return
+            }
+        }
+        super.deleteBackward(sender)
+    }
+}
+
+// MARK: - Line number gutter
+
+// NSRulerView subclass drawn in the scroll view's vertical ruler slot.
+// Highlights the line containing the cursor; dims all other line numbers.
+// Redraws on text-change and selection-change notifications so it stays in sync
+// without any extra wiring from the SwiftUI layer.
+final class LineNumberRulerView: NSRulerView {
+    private weak var textView: NSTextView?
+    private let lineFont: NSFont
+    private let dimColor:    NSColor = NSColor(white: 0.32, alpha: 1)
+    private let activeColor: NSColor = NSColor(white: 0.60, alpha: 1)
+    private let bgColor:     NSColor = NSColor(white: 0.10, alpha: 1)
+    private let borderColor: NSColor = NSColor(white: 0.18, alpha: 1)
+
+    init(textView: NSTextView, scrollView: NSScrollView) {
+        self.textView = textView
+        self.lineFont = NSFont.monospacedSystemFont(ofSize: Theme.FontSize.xs - 0.5, weight: .regular)
+        super.init(scrollView: scrollView, orientation: .verticalRuler)
+        clientView = textView
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(setNeedsRedraw),
+            name: NSText.didChangeNotification, object: textView)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(setNeedsRedraw),
+            name: NSTextView.didChangeSelectionNotification, object: textView)
+    }
+    required init(coder: NSCoder) { fatalError() }
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func setNeedsRedraw() { needsDisplay = true }
+
+    override var requiredThickness: CGFloat {
+        let lines  = textView?.string.components(separatedBy: "\n").count ?? 1
+        let digits = max(3, "\(lines)".count)
+        return ceil(CGFloat(digits) * lineFont.maximumAdvancement.width + 14)
+    }
+
+    override func drawHashMarksAndLabels(in rect: NSRect) {
+        guard let tv = textView,
+              let lm = tv.layoutManager,
+              let sv = scrollView else { return }
+
+        bgColor.setFill();    bounds.fill()
+        borderColor.setFill()
+        NSRect(x: bounds.maxX - 1, y: rect.minY, width: 1, height: rect.height).fill()
+
+        let contentOffsetY = sv.contentView.bounds.minY
+        let insetY         = tv.textContainerInset.height
+        let nsText         = tv.string as NSString
+        let cursorLoc      = tv.selectedRange().location
+        var lineNum        = 0
+
+        lm.enumerateLineFragments(
+            forGlyphRange: NSRange(location: 0, length: lm.numberOfGlyphs)
+        ) { [weak self] _, usedRect, _, glyphRange, _ in
+            guard let self else { return }
+            let charRange = lm.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+            let isStart   = charRange.location == 0
+                         || (charRange.location > 0 && nsText.character(at: charRange.location - 1) == 10)
+            guard isStart else { return }
+            lineNum += 1
+
+            let lineY = usedRect.minY + insetY - contentOffsetY
+            guard lineY + usedRect.height > rect.minY - 2,
+                  lineY < rect.maxY + 2 else { return }
+
+            let isActive = cursorLoc >= charRange.location
+                        && cursorLoc <= charRange.location + charRange.length
+            let color    = isActive ? self.activeColor : self.dimColor
+            let label    = "\(lineNum)" as NSString
+            let attrs: [NSAttributedString.Key: Any] = [.font: self.lineFont, .foregroundColor: color]
+            let sz       = label.size(withAttributes: attrs)
+            label.draw(at: NSPoint(x: self.bounds.width - sz.width - 6,
+                                   y: lineY + (usedRect.height - sz.height) / 2),
+                       withAttributes: attrs)
+        }
+
+        // Extra fragment for the virtual line after a trailing newline
+        if lm.extraLineFragmentTextContainer != nil {
+            lineNum += 1
+            let extraRect = lm.extraLineFragmentUsedRect
+            let lineY     = extraRect.minY + insetY - contentOffsetY
+            guard lineY + extraRect.height > rect.minY - 2, lineY < rect.maxY + 2 else { return }
+            let isActive  = cursorLoc >= nsText.length
+            let color     = isActive ? activeColor : dimColor
+            let label     = "\(lineNum)" as NSString
+            let attrs: [NSAttributedString.Key: Any] = [.font: lineFont, .foregroundColor: color]
+            let sz        = label.size(withAttributes: attrs)
+            label.draw(at: NSPoint(x: bounds.width - sz.width - 6,
+                                   y: lineY + (extraRect.height - sz.height) / 2),
+                       withAttributes: attrs)
+        }
     }
 }
 
@@ -187,6 +400,7 @@ struct EditorTextView: NSViewRepresentable {
     var themeForeground: NSColor = NSColor(white: 0.85, alpha: 1)
     var themeBackground: NSColor = NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1)
     var onFocusChange: ((Bool) -> Void)? = nil
+    var onCursorChange: ((Int, Int) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -200,8 +414,6 @@ struct EditorTextView: NSViewRepresentable {
         let contentSize = scrollView.contentSize
         let textView = AgamonEditorTextView(frame: NSRect(origin: .zero, size: contentSize))
 
-        // NSTextView must be told to resize vertically and track the scroll view width,
-        // otherwise it renders at zero height and nothing is visible.
         textView.minSize = NSSize(width: 0, height: contentSize.height)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
                                   height: CGFloat.greatestFiniteMagnitude)
@@ -218,24 +430,30 @@ struct EditorTextView: NSViewRepresentable {
         textView.isEditable = true
         textView.isSelectable = true
         textView.allowsUndo = true
-        let editorFont = NSFont.monospacedSystemFont(ofSize: Theme.FontSize.sm, weight: .regular)
+        let editorFont  = NSFont.monospacedSystemFont(ofSize: Theme.FontSize.sm, weight: .regular)
         let editorColor = NSColor(white: 0.85, alpha: 1)
-        textView.font = editorFont
-        textView.textColor = editorColor
+        textView.font            = editorFont
+        textView.textColor       = editorColor
         textView.backgroundColor = themeBackground
         textView.typingAttributes = [.font: editorFont, .foregroundColor: editorColor]
         textView.textContainerInset = NSSize(width: Theme.Spacing.md, height: Theme.Spacing.md)
 
         // Disable smart substitutions — they corrupt code
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticQuoteSubstitutionEnabled  = false
+        textView.isAutomaticDashSubstitutionEnabled   = false
         textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.isAutomaticLinkDetectionEnabled = false
+        textView.isAutomaticLinkDetectionEnabled      = false
 
         textView.onFocusChange = onFocusChange
-        textView.delegate = context.coordinator
+        textView.delegate      = context.coordinator
         context.coordinator.textView = textView
         scrollView.documentView = textView
+
+        // Attach line number gutter
+        let ruler = LineNumberRulerView(textView: textView, scrollView: scrollView)
+        scrollView.verticalRulerView = ruler
+        scrollView.hasVerticalRuler  = true
+        scrollView.rulersVisible     = true
 
         return scrollView
     }
@@ -250,23 +468,22 @@ struct EditorTextView: NSViewRepresentable {
 
         if paletteChanged || prevParent.themeBackground != themeBackground {
             scrollView.backgroundColor = themeBackground
-            textView.backgroundColor = themeBackground
+            textView.backgroundColor   = themeBackground
         }
 
         if prevParent.lineWrap != lineWrap {
             applyLineWrap(lineWrap, to: textView, scrollView: scrollView)
+            scrollView.verticalRulerView?.needsDisplay = true
         }
         if textView.string != text {
             textView.string = text
             context.coordinator.applyHighlighting(to: textView)
+            scrollView.verticalRulerView?.needsDisplay = true
         } else if paletteChanged {
-            // Theme changed — re-highlight without replacing the string
             context.coordinator.applyHighlighting(to: textView)
         }
         if focusRequestID != context.coordinator.lastFocusRequestID {
             context.coordinator.lastFocusRequestID = focusRequestID
-            // Defer to next runloop: on first mount the text view may not yet be in
-            // a window, and makeFirstResponder is a no-op without a window.
             DispatchQueue.main.async { [weak textView] in
                 guard let tv = textView else { return }
                 tv.window?.makeFirstResponder(tv)
@@ -297,7 +514,6 @@ struct EditorTextView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: EditorTextView
         weak var textView: AgamonEditorTextView?
-        // Last focus token consumed; updateNSView triggers makeFirstResponder when it changes.
         var lastFocusRequestID: Int = 0
         private var highlightWork: DispatchWorkItem?
 
@@ -306,21 +522,16 @@ struct EditorTextView: NSViewRepresentable {
             super.init()
             NotificationCenter.default.addObserver(
                 self, selector: #selector(openFindBar),
-                name: .agamonOpenEditorFind, object: nil
-            )
+                name: .agamonOpenEditorFind, object: nil)
         }
 
-        deinit {
-            NotificationCenter.default.removeObserver(self)
-        }
+        deinit { NotificationCenter.default.removeObserver(self) }
 
         // Called when AppState.openFind() detects editorFocused=true. SwiftUI's
         // ShortcutHandler consumes the Cmd+F key event before NSTextView.performKeyEquivalent
         // sees it, so we must explicitly invoke the find bar here.
         @objc private func openFindBar() {
             guard let tv = textView else { return }
-            // NSMenuItem with tag = NSTextFinder.Action.showFindInterface (1) is the
-            // documented way to trigger the inline find bar when usesFindBar = true.
             let item = NSMenuItem()
             item.tag = NSTextFinder.Action.showFindInterface.rawValue
             tv.window?.makeFirstResponder(tv)
@@ -331,8 +542,6 @@ struct EditorTextView: NSViewRepresentable {
             guard let tv = notification.object as? NSTextView else { return }
             parent.text = tv.string
             parent.onChange()
-            // Debounce: wait 80ms after the last keystroke before re-highlighting.
-            // This prevents per-character regex runs on large files.
             highlightWork?.cancel()
             let work = DispatchWorkItem { [weak self, weak tv] in
                 guard let self, let tv else { return }
@@ -342,7 +551,23 @@ struct EditorTextView: NSViewRepresentable {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
         }
 
-        // Applies syntax colors to the text view's storage. Safe to call on main thread only.
+        // Update the line:col counter whenever the insertion point moves.
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let tv = notification.object as? NSTextView,
+                  let storage = tv.textStorage else { return }
+            let loc    = min(tv.selectedRange().location, storage.length)
+            let nsText = storage.string as NSString
+            let lineRange = nsText.lineRange(for: NSRange(location: loc, length: 0))
+            var line = 1
+            var i    = 0
+            while i < lineRange.location {
+                if nsText.character(at: i) == 10 { line += 1 }
+                i += 1
+            }
+            let col = loc - lineRange.location + 1
+            parent.onCursorChange?(line, col)
+        }
+
         func applyHighlighting(to tv: NSTextView) {
             guard let storage = tv.textStorage else { return }
             let lang     = SyntaxLanguage.detect(fileExtension: parent.fileExtension)

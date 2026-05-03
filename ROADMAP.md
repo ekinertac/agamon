@@ -5,23 +5,23 @@
 The focus is closing the gap that forces you to leave the app for basic file operations and editor tasks.
 
 ### Editor
-- [ ] Tab key indents all selected lines (pairs with existing Shift+Tab de-indent)
-- [ ] Line number gutter
-- [ ] Line / column indicator in the status bar
-- [ ] Auto-closing brackets, parens, and quotes
+- [x] Tab key indents all selected lines (pairs with existing Shift+Tab de-indent)
+- [x] Line number gutter
+- [x] Line / column indicator in the status bar
+- [x] Auto-closing brackets, parens, and quotes
 
 ### File Tree
-- [ ] New file / new folder (toolbar button or right-click context menu)
-- [ ] Rename file or folder (double-click or context menu)
-- [ ] Delete file or folder (with confirmation)
+- [x] New file / new folder (toolbar button or right-click context menu)
+- [x] Rename file or folder (double-click or context menu)
+- [x] Delete file or folder (with confirmation)
 
 ### Session
-- [ ] Per-project open editor files (currently global — switching projects mixes tabs)
-- [ ] Restore `filePanelVisible` state across launches
+- [x] Per-project open editor files (currently global — switching projects mixes tabs)
+- [x] Restore `filePanelVisible` state across launches
 
 ### Editor Tabs
 - [ ] Drag to reorder tabs
-- [ ] Unsaved-changes dot in the tab itself (not just the status bar)
+- [x] Unsaved-changes dot in the tab itself (not just the status bar)
 
 ---
 

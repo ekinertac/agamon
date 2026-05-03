@@ -85,29 +85,22 @@ final class AppState {
     var selectedTabID: UUID?
     var focusedPaneID: UUID?
     var zoomedPaneID: UUID? = nil    // non-nil while a pane is zoomed to fill the container
-    // Persisted: virtual agamon-diff:// URLs are intentionally excluded (ephemeral).
-    var openFiles: [URL] = {
-        let paths = UserDefaults.standard.stringArray(forKey: "editorOpenFiles") ?? []
-        return paths.map { URL(fileURLWithPath: $0) }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
-    }() {
+    // Persisted per-project: virtual agamon-diff:// URLs are intentionally excluded (ephemeral).
+    var openFiles: [URL] = [] {
         didSet {
+            guard let id = selectedProjectID else { return }
             let paths = openFiles.filter(\.isFileURL).map(\.path)
-            UserDefaults.standard.set(paths, forKey: "editorOpenFiles")
+            UserDefaults.standard.set(paths, forKey: "editorOpenFiles_\(id)")
         }
     }
-    var selectedFile: URL? = {
-        guard let path = UserDefaults.standard.string(forKey: "editorSelectedFile") else { return nil }
-        let url = URL(fileURLWithPath: path)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
-    }() {
-        didSet { UserDefaults.standard.set(selectedFile?.path, forKey: "editorSelectedFile") }
+    var selectedFile: URL? = nil {
+        didSet {
+            guard let id = selectedProjectID else { return }
+            UserDefaults.standard.set(selectedFile?.path, forKey: "editorSelectedFile_\(id)")
+        }
     }
-    // Restored from open files so the editor panel reopens with the last session's state.
-    var editorPanelVisible: Bool = {
-        let paths = UserDefaults.standard.stringArray(forKey: "editorOpenFiles") ?? []
-        return paths.contains { FileManager.default.fileExists(atPath: $0) }
-    }()
+    // Loaded per-project in loadEditorState(for:) — starts false until first project loads.
+    var editorPanelVisible: Bool = false
     // Bumped by focusEditor() to request first-responder on the editor text view.
     // EditorTextView observes this via its prop and grabs focus when the value changes.
     // Used instead of a notification because the editor view isn't mounted until
@@ -115,7 +108,13 @@ final class AppState {
     // miss the not-yet-existing observer. SwiftUI guarantees updateNSView runs on
     // first mount with the current token, so the freshly-created view picks it up.
     var editorFocusRequestID: Int = 0
-    var filePanelVisible: Bool = true
+    var filePanelVisible: Bool = {
+        UserDefaults.standard.object(forKey: "filePanelVisible") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "filePanelVisible")
+    }() {
+        didSet { UserDefaults.standard.set(filePanelVisible, forKey: "filePanelVisible") }
+    }
     var filePanelFocused: Bool = false
     var filePanelTabIndex: Int = 0
     var activeModifiers: NSEvent.ModifierFlags = []
@@ -233,6 +232,7 @@ final class AppState {
         let firstTab = projects.first { $0.id == id }?.tabs.first
         selectedTabID = firstTab?.id
         focusedPaneID = firstTab?.rootPane.firstLeafID
+        loadEditorState(for: id)
     }
 
     // Opens a folder picker and immediately adds the selected directory as a project.
@@ -380,6 +380,22 @@ final class AppState {
 
     // MARK: - Editor Panel
 
+    // Loads per-project editor state from UserDefaults. Called on project switch and app launch.
+    private func loadEditorState(for projectID: UUID) {
+        let filesKey = "editorOpenFiles_\(projectID)"
+        let selKey   = "editorSelectedFile_\(projectID)"
+        let paths = UserDefaults.standard.stringArray(forKey: filesKey) ?? []
+        openFiles = paths.map { URL(fileURLWithPath: $0) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        if let selPath = UserDefaults.standard.string(forKey: selKey),
+           FileManager.default.fileExists(atPath: selPath) {
+            selectedFile = URL(fileURLWithPath: selPath)
+        } else {
+            selectedFile = openFiles.first
+        }
+        editorPanelVisible = !openFiles.isEmpty
+    }
+
     func openFile(_ url: URL) {
         if !openFiles.contains(url) {
             openFiles.append(url)
@@ -415,6 +431,19 @@ final class AppState {
 
     func closeEditor() {
         editorPanelVisible = false
+    }
+
+    // Updates open editor tabs when a file is renamed or deleted.
+    // Pass nil for `to` to simply close the file (delete case).
+    // Updates selectedFile if it was pointing at the old URL.
+    func renameOpenFile(from oldURL: URL, to newURL: URL?) {
+        guard let idx = openFiles.firstIndex(of: oldURL) else { return }
+        if let newURL {
+            openFiles[idx] = newURL
+            if selectedFile == oldURL { selectedFile = newURL }
+        } else {
+            closeFile(oldURL)
+        }
     }
 
     // MARK: - File Panel
@@ -656,5 +685,8 @@ final class AppState {
         let firstTab = projects.first?.tabs.first
         selectedTabID = firstTab?.id
         focusedPaneID = firstTab?.rootPane.firstLeafID
+        if let id = selectedProjectID {
+            loadEditorState(for: id)
+        }
     }
 }
