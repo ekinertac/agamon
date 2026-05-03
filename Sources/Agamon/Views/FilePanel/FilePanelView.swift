@@ -11,14 +11,14 @@ import SwiftUI
 
 // MARK: - Tab
 
-private enum FilePanelTab { case files, diff }
+private enum FilePanelTab: Int { case files = 0, diff = 1 }
 
 // MARK: - FilePanelView
 
 struct FilePanelView: View {
     @Environment(AppState.self) private var appState
-    @State private var activeTab: FilePanelTab = .files
     @State private var treeFocused: Bool = false
+    private var activeTab: FilePanelTab { FilePanelTab(rawValue: appState.filePanelTabIndex) ?? .files }
     // Path → single-char badge: "M", "A", "D", "R", "?"
     @State private var gitStatus: [URL: String] = [:]
 
@@ -70,7 +70,7 @@ struct FilePanelView: View {
         }
     }
 
-    private static func parseStatus(_ output: String, rootPath: String) -> [URL: String] {
+    private nonisolated static func parseStatus(_ output: String, rootPath: String) -> [URL: String] {
         let root = URL(fileURLWithPath: rootPath)
         var result: [URL: String] = [:]
         for line in output.components(separatedBy: .newlines) {
@@ -122,7 +122,7 @@ struct FilePanelView: View {
     @ViewBuilder
     private func pillTab(_ label: String, tab: FilePanelTab) -> some View {
         let active = activeTab == tab
-        Button(label) { activeTab = tab }
+        Button(label) { appState.filePanelTabIndex = tab.rawValue }
             .font(.system(size: 12, weight: active ? .medium : .regular))
             .foregroundStyle(active ? Theme.Color.textPrimary : Theme.Color.textSecondary)
             .padding(.horizontal, Theme.Spacing.sm)

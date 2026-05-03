@@ -97,6 +97,7 @@ final class AppState {
     var editorFocusRequestID: Int = 0
     var filePanelVisible: Bool = true
     var filePanelFocused: Bool = false
+    var filePanelTabIndex: Int = 0
     var activeModifiers: NSEvent.ModifierFlags = []
 
     // True while the command center palette is visible.
@@ -292,6 +293,10 @@ final class AppState {
     func selectEditorTab(at index: Int) {
         guard editorPanelVisible, index < openFiles.count else { return }
         openFile(openFiles[index])
+    }
+
+    func selectFilePanelTab(at index: Int) {
+        filePanelTabIndex = max(0, index)
     }
 
     // MARK: - Pane Close
@@ -532,9 +537,17 @@ final class AppState {
         // so this monitor fires for both editor tab kinds without needing a type check.
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
-            guard self.editorFocused else { return event }
-
             let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
+
+            // Cmd+1…9 while file panel focused → switch file panel tab, consume event.
+            if self.filePanelFocused, mods == .command,
+               let char = event.characters, char.count == 1,
+               let n = Int(char), (1...9).contains(n) {
+                self.selectFilePanelTab(at: n - 1)
+                return nil
+            }
+
+            guard self.editorFocused else { return event }
 
             // Cmd+1…9 while editor focused → select editor tab, consume event.
             // Without consume, the event would fall through to ShortcutHandler's terminal tab handler.
@@ -577,6 +590,21 @@ final class AppState {
                 return nil
             }
             return event
+        }
+
+        // Home/End: SwiftTerm sends VT220 sequences (\x1b[1~ / \x1b[4~) but macOS zsh only
+        // binds xterm sequences (\x1b[H / \x1b[F), so the trailing ~ appears as a literal.
+        // Intercept here (before the event reaches SwiftTerm) and send the correct bytes.
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            guard NSApp.keyWindow?.firstResponder is AgamonTerminalView else { return event }
+            guard event.modifierFlags.intersection([.shift, .control, .option, .command]).isEmpty else { return event }
+            guard let tv = self.focusedPaneID.flatMap({ self.terminalViews[$0] }) else { return event }
+            switch event.keyCode {
+            case 115: tv.send(data: [0x1b, 0x5b, 0x48][...]); return nil  // Home → ESC [ H
+            case 119: tv.send(data: [0x1b, 0x5b, 0x46][...]); return nil  // End  → ESC [ F
+            default:  return event
+            }
         }
 
         // Listen for BEL signals from terminals. Only record attention when the pane

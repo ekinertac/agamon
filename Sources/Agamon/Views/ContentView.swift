@@ -11,6 +11,8 @@ struct ContentView: View {
     @Environment(AppState.self) private var appState
     @State private var editorPanelWidth: CGFloat = Theme.EditorPanel.width
     @State private var editorPanelBaseWidth: CGFloat = Theme.EditorPanel.width
+    @State private var filePanelWidth: CGFloat = Theme.FilePanel.width
+    @State private var filePanelBaseWidth: CGFloat = Theme.FilePanel.width
 
     var body: some View {
         HStack(spacing: 0) {
@@ -46,9 +48,13 @@ struct ContentView: View {
 
             // Column 4: file explorer
             if appState.filePanelVisible {
-                divider
+                ResizeDivider {
+                    filePanelWidth = max(Theme.FilePanel.minWidth, min(Theme.FilePanel.maxWidth, filePanelBaseWidth - $0))
+                } onEnd: {
+                    filePanelBaseWidth = filePanelWidth
+                }
                 FilePanelView()
-                    .frame(width: Theme.FilePanel.width)
+                    .frame(width: filePanelWidth)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }

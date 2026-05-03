@@ -62,7 +62,7 @@ struct DiffListView: View {
         }
     }
 
-    private static func parse(_ output: String, rootPath: String) -> [DiffFileItem] {
+    private nonisolated static func parse(_ output: String, rootPath: String) -> [DiffFileItem] {
         let root = URL(fileURLWithPath: rootPath)
         return output.components(separatedBy: .newlines).compactMap { line -> DiffFileItem? in
             let parts = line.components(separatedBy: "\t")
