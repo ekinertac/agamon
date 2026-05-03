@@ -131,7 +131,7 @@ struct ResizeDivider: View {
             .overlay(
                 Rectangle()
                     .fill(Color.clear)
-                    .frame(width: 8)
+                    .frame(width: 16)
                     .contentShape(Rectangle())
                     .onHover { hovering in
                         if hovering { NSCursor.resizeLeftRight.push() }

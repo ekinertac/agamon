@@ -93,7 +93,7 @@ struct PaneDividerView: View {
                 .frame(width: 1, height: h)
             Rectangle()
                 .fill(Color.clear)
-                .frame(width: 8, height: h)
+                .frame(width: 16, height: h)
                 .contentShape(Rectangle())
                 .onHover { hovering in
                     if hovering { NSCursor.resizeLeftRight.push() }
@@ -128,7 +128,7 @@ struct PaneDividerView: View {
                 .frame(width: w, height: 1)
             Rectangle()
                 .fill(Color.clear)
-                .frame(width: w, height: 8)
+                .frame(width: w, height: 16)
                 .contentShape(Rectangle())
                 .onHover { hovering in
                     if hovering { NSCursor.resizeUpDown.push() }
