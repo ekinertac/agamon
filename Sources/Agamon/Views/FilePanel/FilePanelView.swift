@@ -101,10 +101,15 @@ struct FilePanelView: View {
         HStack(spacing: Theme.Spacing.sm) {
             pillControl
             Spacer()
+            if appState.showsCmdShortcuts {
+                ShortcutBadge(label: "⌘E")
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            }
             closeButton
         }
         .padding(.horizontal, Theme.Spacing.md)
         .frame(height: Theme.Panel.headerHeight)
+        .animation(.easeInOut(duration: 0.12), value: appState.showsCmdShortcuts)
     }
 
     private var pillControl: some View {
@@ -138,11 +143,8 @@ struct FilePanelView: View {
             withAnimation(.easeInOut(duration: 0.15)) { appState.toggleFilePanel() }
         } label: {
             Image(systemName: "xmark").font(.system(size: 11))
-                .opacity(appState.showsCmdShortcuts ? 0 : 1)
         }
         .buttonStyle(IconButtonStyle())
-        .overlay { if appState.showsCmdShortcuts { ShortcutBadge(label: "⌘E") } }
-        .animation(.easeInOut(duration: 0.12), value: appState.showsCmdShortcuts)
     }
 
     private var emptyState: some View {
