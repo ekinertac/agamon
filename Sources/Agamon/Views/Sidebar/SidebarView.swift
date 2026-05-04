@@ -30,6 +30,7 @@ struct SidebarView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.uiFontOffset) private var fontOffset
     @Environment(\.openSettings) private var openSettings
+    @FocusState private var listFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,6 +41,10 @@ struct SidebarView: View {
             footer
         }
         .background(Theme.Color.surface)
+        // Respond to focusSidebar() by grabbing keyboard focus on the project list.
+        .onChange(of: appState.sidebarFocusRequestID) { listFocused = true }
+        // Keep sidebarFocused in sync when SwiftUI focus leaves this view.
+        .onChange(of: listFocused) { if !listFocused { appState.sidebarFocused = false } }
     }
 
     private var header: some View {
@@ -63,36 +68,60 @@ struct SidebarView: View {
     }
 
     private var projectList: some View {
-        ScrollView {
-            LazyVStack(spacing: 2) {
-                ForEach(Array(appState.projects.enumerated()), id: \.element.id) { idx, project in
-                    ProjectRow(
-                        project: project,
-                        isSelected: project.id == appState.selectedProjectID,
-                        index: idx
-                    )
-                    .onTapGesture {
-                        appState.selectProject(project.id)
-                    }
-                    .contextMenu {
-                        Button("Rename") {
-                            guard let newName = askForName(
-                                title: "Rename \"\(project.name)\"",
-                                placeholder: project.name,
-                                initial: project.name
-                            ) else { return }
-                            appState.renameProject(project.id, to: newName)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    ForEach(Array(appState.projects.enumerated()), id: \.element.id) { idx, project in
+                        ProjectRow(
+                            project: project,
+                            isSelected: project.id == appState.selectedProjectID,
+                            index: idx
+                        )
+                        .id(project.id)
+                        .onTapGesture {
+                            appState.selectProject(project.id)
                         }
-                        Divider()
-                        Button("Remove", role: .destructive) {
-                            appState.removeProject(project.id)
+                        .contextMenu {
+                            Button("Rename") {
+                                guard let newName = askForName(
+                                    title: "Rename \"\(project.name)\"",
+                                    placeholder: project.name,
+                                    initial: project.name
+                                ) else { return }
+                                appState.renameProject(project.id, to: newName)
+                            }
+                            Divider()
+                            Button("Remove", role: .destructive) {
+                                appState.removeProject(project.id)
+                            }
+                            .keyboardShortcut(.delete, modifiers: .command)
                         }
-                        .keyboardShortcut(.delete, modifiers: .command)
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.sm)
+                .padding(.vertical, Theme.Spacing.sm)
             }
-            .padding(.horizontal, Theme.Spacing.sm)
-            .padding(.vertical, Theme.Spacing.sm)
+            .focusable()
+            .focusEffectDisabled()
+            .focused($listFocused)
+            .onKeyPress(.upArrow) {
+                guard let current = appState.selectedProjectID,
+                      let idx = appState.projects.firstIndex(where: { $0.id == current }),
+                      idx > 0 else { return .handled }
+                let prev = appState.projects[idx - 1]
+                appState.selectProject(prev.id)
+                proxy.scrollTo(prev.id, anchor: .center)
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                guard let current = appState.selectedProjectID,
+                      let idx = appState.projects.firstIndex(where: { $0.id == current }),
+                      idx < appState.projects.count - 1 else { return .handled }
+                let next = appState.projects[idx + 1]
+                appState.selectProject(next.id)
+                proxy.scrollTo(next.id, anchor: .center)
+                return .handled
+            }
         }
     }
 

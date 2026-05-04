@@ -155,6 +155,10 @@ final class AppState {
     // simultaneously, leaking modifier hints and shortcut actions into inactive windows.
     weak var hostWindow: NSWindow?
     private var monitorStarted = false
+
+    // Bumped by focusSidebar() to request keyboard focus on the project list in SidebarView.
+    var sidebarFocusRequestID: Int = 0
+    var sidebarFocused: Bool = false
     var terminalFontSize: CGFloat = {
         let saved = UserDefaults.standard.double(forKey: "terminalFontSize")
         return saved > 0 ? CGFloat(saved) : 13
@@ -564,6 +568,15 @@ final class AppState {
         filePanelFocused = true
     }
 
+    func focusSidebar() {
+        if focusedPaneID == nil {
+            focusedPaneID = selectedTab?.rootPane.firstLeafID
+        }
+        sidebarVisible = true
+        sidebarFocused = true
+        sidebarFocusRequestID &+= 1
+    }
+
     func toggleSidebar() {
         sidebarVisible = !sidebarVisible
     }
@@ -586,6 +599,8 @@ final class AppState {
     // Also closes terminal search if open — Escape, tab switch, and panel dismiss all flow here.
     func refocusActiveTerminal() {
         terminalSearchPaneID = nil
+        sidebarFocused = false
+        filePanelFocused = false
         if focusedPaneID == nil {
             focusedPaneID = selectedTab?.rootPane.firstLeafID
         }
@@ -634,14 +649,35 @@ final class AppState {
     // MARK: - Pane Navigation
 
     func focusPane(direction: PaneNavigationDirection) {
+        // Sidebar has logical focus → ⌘⌥→ exits to the terminal grid.
+        if sidebarFocused {
+            if direction == .right { refocusActiveTerminal() }
+            return
+        }
+        // File panel has logical focus → ⌘⌥← exits to editor or terminal.
+        if filePanelFocused {
+            if direction == .left {
+                filePanelFocused = false
+                if editorPanelVisible { focusEditor() } else { refocusActiveTerminal() }
+            }
+            return
+        }
         guard let tab = selectedTab,
-              let currentID = focusedPaneID ?? selectedTab?.rootPane.firstLeafID,
-              let neighborID = tab.rootPane.neighborLeafID(of: currentID, direction: direction)
+              let currentID = focusedPaneID ?? selectedTab?.rootPane.firstLeafID
         else { return }
-        focusedPaneID = neighborID
-        attentionPaneIDs.remove(neighborID)
-        tabFocusMemory[tab.id] = neighborID
-        NotificationCenter.default.post(name: .agamonFocusTerminal, object: neighborID)
+        if let neighborID = tab.rootPane.neighborLeafID(of: currentID, direction: direction) {
+            focusedPaneID = neighborID
+            attentionPaneIDs.remove(neighborID)
+            tabFocusMemory[tab.id] = neighborID
+            NotificationCenter.default.post(name: .agamonFocusTerminal, object: neighborID)
+        } else if direction == .right {
+            // Right edge of terminal grid — spill into editor then file panel.
+            if editorPanelVisible { focusEditor() }
+            else if filePanelVisible { focusFilePanel() }
+        } else if direction == .left {
+            // Left edge of terminal grid — spill into sidebar.
+            if sidebarVisible { focusSidebar() }
+        }
     }
 
     // MARK: - Resize
@@ -764,6 +800,20 @@ final class AppState {
             guard let self, event.window == self.hostWindow else { return event }
             let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
 
+            // ⌘⌥← while file panel focused → exit to editor or terminal.
+            if self.filePanelFocused, mods == [.command, .option], event.keyCode == 123 {
+                self.filePanelFocused = false
+                if self.editorPanelVisible { self.focusEditor() }
+                else { self.refocusActiveTerminal() }
+                return nil
+            }
+
+            // ⌘⌥→ while sidebar focused → exit to terminal.
+            if self.sidebarFocused, mods == [.command, .option], event.keyCode == 124 {
+                self.refocusActiveTerminal()
+                return nil
+            }
+
             // Cmd+1…9 while file panel focused → switch file panel tab, consume event.
             if self.filePanelFocused, mods == .command,
                let char = event.characters, char.count == 1,
@@ -803,11 +853,14 @@ final class AppState {
                 return nil
             }
 
-            // Cmd+Opt+Left while editor focused → return focus to the active terminal.
-            // keyCode 123 = left arrow. Without consume, pane navigation would fire instead.
-            if mods == [.command, .option], event.keyCode == 123 {
-                self.refocusActiveTerminal()
-                return nil
+            // ⌘⌥ cross-panel navigation while editor is focused.
+            if mods == [.command, .option] {
+                switch event.keyCode {
+                case 123: self.refocusActiveTerminal(); return nil   // ← → terminal
+                case 124:                                            // → → file panel
+                    if self.filePanelVisible { self.focusFilePanel(); return nil }
+                default: break
+                }
             }
 
             // Cmd+W while editor focused → request closing the active editor tab.
@@ -822,19 +875,27 @@ final class AppState {
             return event
         }
 
-        // Cmd+Opt+Right when a terminal is focused and there is no pane to the right →
-        // jump to the editor panel instead of silently doing nothing.
-        // Passes through when a right-neighbor pane exists so focusPane handles it normally.
+        // ⌘⌥arrow while a terminal is focused — handles the four panel-boundary cases
+        // that can't be reached by focusPane alone (which only navigates within the grid).
+        // Passes through for intra-grid moves so ShortcutHandler's focusPane handles them.
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window == self.hostWindow else { return event }
             guard NSApp.keyWindow?.firstResponder is AgamonTerminalView else { return event }
             let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
-            guard mods == [.command, .option], event.keyCode == 124 /* right arrow */ else { return event }
-            guard self.editorPanelVisible, let tab = self.selectedTab else { return event }
+            guard mods == [.command, .option] else { return event }
+            guard let tab = self.selectedTab else { return event }
             let currentID = self.focusedPaneID ?? tab.rootPane.firstLeafID
-            if tab.rootPane.neighborLeafID(of: currentID, direction: .right) == nil {
-                self.focusEditor()
-                return nil
+            switch event.keyCode {
+            case 124: // → right edge → editor → file panel
+                if tab.rootPane.neighborLeafID(of: currentID, direction: .right) == nil {
+                    if self.editorPanelVisible { self.focusEditor(); return nil }
+                    else if self.filePanelVisible { self.focusFilePanel(); return nil }
+                }
+            case 123: // ← left edge → sidebar
+                if tab.rootPane.neighborLeafID(of: currentID, direction: .left) == nil {
+                    if self.sidebarVisible { self.focusSidebar(); return nil }
+                }
+            default: break
             }
             return event
         }
