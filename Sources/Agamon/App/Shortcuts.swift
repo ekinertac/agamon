@@ -45,6 +45,10 @@ struct ShortcutHandler: View {
             Button("", action: appState.closeCurrentPane)
                 .keyboardShortcut("w", modifiers: .command)
 
+            // Sidebar toggle
+            Button("") { withAnimation(.easeOut(duration: 0.15)) { appState.toggleSidebar() } }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+
             // File panel toggle + focus
             Button("", action: appState.focusFilePanel)
                 .keyboardShortcut("e", modifiers: .command)

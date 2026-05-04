@@ -16,6 +16,10 @@ struct TabBarView: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            sidebarToggle
+
+            Rectangle().fill(Theme.Color.border).frame(width: 1).frame(maxHeight: .infinity)
+
             HStack(spacing: 0) {
                 ForEach(Array(project.tabs.enumerated()), id: \.element.id) { idx, tab in
                     TabItemView(
@@ -51,6 +55,21 @@ struct TabBarView: View {
         }
         .frame(height: Theme.TabBar.height)
         .background(Theme.Color.surface)
+    }
+
+    private var sidebarToggle: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) { appState.toggleSidebar() }
+        } label: {
+            Image(systemName: "sidebar.leading")
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(appState.sidebarVisible ? Theme.Color.accent : Theme.Color.textTertiary)
+                .frame(width: Theme.TabBar.height - 4, height: Theme.TabBar.height)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, Theme.Spacing.xs)
+        .help("Toggle Sidebar  ⌘⇧S")
+        .animation(.easeInOut(duration: 0.12), value: appState.sidebarVisible)
     }
 
     private var panelToggles: some View {

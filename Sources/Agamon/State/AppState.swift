@@ -117,6 +117,14 @@ final class AppState {
     // miss the not-yet-existing observer. SwiftUI guarantees updateNSView runs on
     // first mount with the current token, so the freshly-created view picks it up.
     var editorFocusRequestID: Int = 0
+    var sidebarVisible: Bool = {
+        UserDefaults.standard.object(forKey: "sidebarVisible") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "sidebarVisible")
+    }() {
+        didSet { UserDefaults.standard.set(sidebarVisible, forKey: "sidebarVisible") }
+    }
+
     var filePanelVisible: Bool = {
         UserDefaults.standard.object(forKey: "filePanelVisible") == nil
             ? true
@@ -547,6 +555,10 @@ final class AppState {
         }
         filePanelVisible = true
         filePanelFocused = true
+    }
+
+    func toggleSidebar() {
+        sidebarVisible = !sidebarVisible
     }
 
     func toggleFilePanel() {

@@ -18,10 +18,13 @@ struct ContentView: View {
     var body: some View {
         HStack(spacing: 0) {
             // Column 1: project list
-            SidebarView()
-                .frame(width: Theme.Sidebar.width)
+            if appState.sidebarVisible {
+                SidebarView()
+                    .frame(width: Theme.Sidebar.width)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
 
-            divider
+                divider
+            }
 
             // Column 2: terminal tabs + split panes
             VStack(spacing: 0) {
@@ -75,6 +78,7 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.12), value: appState.commandCenterVisible)
+        .animation(.easeOut(duration: 0.15), value: appState.sidebarVisible)
     }
 
     // ALL projects' tabs are kept in the hierarchy simultaneously — only the active one is visible.
