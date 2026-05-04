@@ -5,7 +5,7 @@ Versions follow [Semantic Versioning](https://semver.org/). Changes since the la
 
 ---
 
-## [Unreleased]
+## [v0.3.1]
 
 ### Added
 - Shortcuts tab in Settings — read-only reference for every registered key binding, grouped by context, with individual keyboard-key cap badges
