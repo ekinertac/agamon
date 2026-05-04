@@ -46,18 +46,20 @@ struct SidebarView: View {
         HStack {
             Text("Projects").sectionHeader()
             Spacer()
+            if appState.showsCmdShortcuts {
+                ShortcutBadge(label: "⌘O")
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            }
             Button(action: appState.openProject) {
                 Image(systemName: "plus")
                     .font(.system(size: 12 + fontOffset, weight: .medium))
-                    .opacity(appState.showsCmdShortcuts ? 0 : 1)
                     .frame(minWidth: 20, minHeight: 20)
             }
             .buttonStyle(IconButtonStyle())
-            .overlay { if appState.showsCmdShortcuts { ShortcutBadge(label: "⌘O") } }
-            .animation(.easeInOut(duration: 0.12), value: appState.showsCmdShortcuts)
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.sm)
+        .animation(.easeInOut(duration: 0.12), value: appState.showsCmdShortcuts)
     }
 
     private var projectList: some View {
