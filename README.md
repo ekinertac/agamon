@@ -49,21 +49,31 @@ Grab the latest build from [Releases](https://github.com/ekinertac/agamon/releas
 
 Signed and notarized — no Gatekeeper prompts.
 
-## Build from source
+## Development
 
-**Requirements:** macOS 14+, Swift 5.9+, Xcode command-line tools
+**Requirements:** macOS 14+, Xcode 15+, Swift 5.9+
 
 ```bash
 git clone https://github.com/ekinertac/agamon
 cd agamon
 
+# Run directly (no signing required)
+swift run
+
+# Or open in Xcode
+open Package.swift
+```
+
+For a distributable `.app` bundle:
+
+```bash
 # Generate the app icon (requires icon.png in the project root)
 make icon
 
 # Build and sign with ad-hoc certificate
 make bundle
 
-# Open
+# Open the result
 open Agamon.app
 ```
 
