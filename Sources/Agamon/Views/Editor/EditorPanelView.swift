@@ -33,6 +33,7 @@ struct EditorPanelView: View {
                         rootPath: appState.selectedProject?.rootPath ?? ""
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
                 } else {
                     FileEditorView(
                         url: url,
@@ -41,6 +42,7 @@ struct EditorPanelView: View {
                         loadError: loadErrors[url]
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
                 }
             } else {
                 emptyState
