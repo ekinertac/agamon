@@ -12,7 +12,7 @@
 import SwiftUI
 import AppKit
 
-let agamonVersion = "0.2"
+let agamonVersion = "0.3.1"
 
 @main
 struct AgamonApp: App {
@@ -36,17 +36,36 @@ struct AgamonApp: App {
                 .environment(\.uiFontOffset, settingsAppState.uiFontSizeOffset)
         }
         .windowResizability(.contentMinSize)
+
+        Window("About Agamon", id: "about") {
+            AboutView()
+        }
+        .windowResizability(.contentSize)
     }
 }
 
 // Owns a fresh AppState per window. Using @State here ensures each window instance
 // created by openWindow(id: "main") gets its own independent AppState.
+//
+// Only the first window that appears loads persisted state and registers the global
+// NSEvent monitors. Subsequent windows (opened via ⌘N) start completely empty so
+// they don't conflict with the primary window's terminal sessions or pane UUIDs.
+// NSEvent monitors are app-global — registering them per-window would fire duplicate
+// keyDown/mouseDown handlers, so they're also scoped to the primary window here.
 struct WindowContainerView: View {
     @State private var appState = AppState()
+    private static var primaryWindowClaimed = false
 
     var body: some View {
         ContentView()
             .environment(appState)
+            .onAppear {
+                if !WindowContainerView.primaryWindowClaimed {
+                    WindowContainerView.primaryWindowClaimed = true
+                    appState.load()
+                    appState.startModifierMonitor()
+                }
+            }
     }
 }
 
@@ -76,6 +95,10 @@ struct AgamonCommands: Commands {
     @Environment(\.openWindow) var openWindow
 
     var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About Agamon") { openWindow(id: "about") }
+        }
+
         CommandGroup(replacing: .newItem) {
             Button("New Window") { openWindow(id: "main") }
                 .keyboardShortcut("n", modifiers: .command)
