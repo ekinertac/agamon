@@ -44,9 +44,45 @@ struct TabBarView: View {
             .overlay { if appState.showsCmdShortcuts { ShortcutBadge(label: "⌘T") } }
             .help("New Tab  ⌘T")
             .animation(.easeInOut(duration: 0.12), value: appState.showsCmdShortcuts)
+
+            Rectangle().fill(Theme.Color.border).frame(width: 1).frame(maxHeight: .infinity)
+
+            panelToggles
         }
         .frame(height: Theme.TabBar.height)
         .background(Theme.Color.surface)
+    }
+
+    private var panelToggles: some View {
+        HStack(spacing: 0) {
+            panelToggleButton(
+                icon: "rectangle.leadinghalf.inset.filled",
+                active: appState.editorPanelVisible,
+                help: "Toggle Editor  ⌘⇧E"
+            ) {
+                withAnimation(.easeOut(duration: 0.12)) { appState.toggleEditorPanel() }
+            }
+            panelToggleButton(
+                icon: "rectangle.trailinghalf.inset.filled",
+                active: appState.filePanelVisible,
+                help: "Toggle File Panel  ⌘E"
+            ) {
+                withAnimation(.easeInOut(duration: 0.15)) { appState.toggleFilePanel() }
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.xs)
+    }
+
+    private func panelToggleButton(icon: String, active: Bool, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(active ? Theme.Color.accent : Theme.Color.textTertiary)
+                .frame(width: Theme.TabBar.height - 4, height: Theme.TabBar.height)
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .animation(.easeInOut(duration: 0.12), value: active)
     }
 }
 

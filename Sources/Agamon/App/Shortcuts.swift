@@ -49,6 +49,10 @@ struct ShortcutHandler: View {
             Button("", action: appState.focusFilePanel)
                 .keyboardShortcut("e", modifiers: .command)
 
+            // Editor panel toggle
+            Button("") { withAnimation(.easeOut(duration: 0.12)) { appState.toggleEditorPanel() } }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+
             // Open project folder picker
             Button("", action: appState.openProject)
                 .keyboardShortcut("o", modifiers: .command)

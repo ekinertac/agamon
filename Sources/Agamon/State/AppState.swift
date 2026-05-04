@@ -558,6 +558,11 @@ final class AppState {
         }
     }
 
+    func toggleEditorPanel() {
+        editorPanelVisible = !editorPanelVisible
+        if !editorPanelVisible { refocusActiveTerminal() }
+    }
+
     // Posts a notification so the active terminal's NSView calls makeFirstResponder on itself.
     // Also closes terminal search if open — Escape, tab switch, and panel dismiss all flow here.
     func refocusActiveTerminal() {
