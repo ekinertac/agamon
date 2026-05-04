@@ -59,6 +59,7 @@ struct SidebarView: View {
                         Button("Remove", role: .destructive) {
                             appState.removeProject(project.id)
                         }
+                        .keyboardShortcut(.delete, modifiers: .command)
                     }
                 }
             }

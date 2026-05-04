@@ -2,6 +2,11 @@
 // Uses .hiddenTitleBar (no unified toolbar) so content starts below the traffic-light zone.
 // This prevents column backgrounds/dividers from bleeding into the title bar area.
 // AppDelegate sets activation policy and window background color to match Theme.Color.background.
+//
+// Multi-window: WindowGroup(id: "main") lets openWindow(id: "main") spawn fresh windows.
+// Each window owns its AppState via WindowContainerView — projects, tabs, and focus are
+// fully independent per window. settingsAppState is a dedicated instance for the Settings
+// panel; changes persist to UserDefaults and are picked up by new windows on init.
 // Related: ContentView.swift (root layout), AppState.swift (shared state).
 
 import SwiftUI
@@ -12,12 +17,12 @@ let agamonVersion = "0.2"
 @main
 struct AgamonApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @State private var appState = AppState()
+    // Dedicated AppState for the Settings panel — not tied to any window.
+    @State private var settingsAppState = AppState()
 
     var body: some Scene {
-        WindowGroup {
-            ContentView()
-                .environment(appState)
+        WindowGroup(id: "main") {
+            WindowContainerView()
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1280, height: 800)
@@ -27,9 +32,20 @@ struct AgamonApp: App {
 
         Settings {
             SettingsView()
-                .environment(appState)
+                .environment(settingsAppState)
         }
         .windowResizability(.contentMinSize)
+    }
+}
+
+// Owns a fresh AppState per window. Using @State here ensures each window instance
+// created by openWindow(id: "main") gets its own independent AppState.
+struct WindowContainerView: View {
+    @State private var appState = AppState()
+
+    var body: some View {
+        ContentView()
+            .environment(appState)
     }
 }
 
@@ -56,9 +72,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 // so keyboard presses always call the view-level handler. Menu clicks go through here.
 struct AgamonCommands: Commands {
     @FocusedValue(\.appState) var appState: AppState?
+    @Environment(\.openWindow) var openWindow
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
+            Button("New Window") { openWindow(id: "main") }
+                .keyboardShortcut("n", modifiers: .command)
+            Divider()
             Button("Open Project...") { appState?.openProject() }
                 .keyboardShortcut("o", modifiers: .command)
             Button("New Tab") {

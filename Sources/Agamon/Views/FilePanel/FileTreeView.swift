@@ -281,6 +281,7 @@ struct FileTreeRow: View {
                     err.runModal()
                 }
             }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
 
             Button("New Folder") {
                 let parentDir = item.isDirectory
@@ -298,6 +299,7 @@ struct FileTreeRow: View {
                     err.runModal()
                 }
             }
+            .keyboardShortcut("n", modifiers: [.command, .option])
 
             Divider()
 
@@ -341,6 +343,7 @@ struct FileTreeRow: View {
                     err.runModal()
                 }
             }
+            .keyboardShortcut(.delete, modifiers: .command)
         }
     }
 
