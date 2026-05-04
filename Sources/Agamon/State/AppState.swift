@@ -758,6 +758,16 @@ final class AppState {
                 return nil
             }
 
+            // Cmd+1…9 while a terminal has focus → select terminal tab, consume event.
+            // ShortcutHandler's .keyboardShortcut() buttons don't fire when an AppKit view
+            // holds keyboard focus, so the shortcut must be intercepted here.
+            if NSApp.keyWindow?.firstResponder is AgamonTerminalView, mods == .command,
+               let char = event.characters, char.count == 1,
+               let n = Int(char), (1...9).contains(n) {
+                self.selectTab(at: n - 1)
+                return nil
+            }
+
             guard self.editorFocused else { return event }
 
             // Cmd+1…9 while editor focused → select editor tab, consume event.

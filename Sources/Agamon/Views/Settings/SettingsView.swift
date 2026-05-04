@@ -1,10 +1,12 @@
 // Settings window — ⌘, registered automatically by the Settings scene in AgamonApp.
-// Two tabs: Appearance (dimming, font, theme) and Terminal (shell).
+// Tabs: Appearance (dimming, font, theme), Text (font family, sizes), Terminal (shell),
+//       and Shortcuts (read-only reference for all registered key bindings).
 // Uses Form.formStyle(.grouped) for proper macOS HIG appearance throughout.
 // The theme picker has a fixed 500px height so it scrolls independently within
 // the Form's own scroll — both can coexist when the inner list has a known size.
 // Related: AppState.swift (owns all settings state), TerminalPaneView.swift (consumes them),
-//          AgamonApp.swift (declares the Settings scene + windowResizability).
+//          AgamonApp.swift (declares the Settings scene + windowResizability),
+//          Shortcuts.swift (the canonical shortcut registrations that this view documents).
 
 import SwiftUI
 
@@ -17,6 +19,8 @@ struct SettingsView: View {
                 .tabItem { Label("Text", systemImage: "textformat") }
             TerminalSettingsView()
                 .tabItem { Label("Terminal", systemImage: "terminal.fill") }
+            ShortcutsSettingsView()
+                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
         }
         .frame(minWidth: 480, minHeight: 680)
         .preferredColorScheme(.dark)
@@ -532,5 +536,103 @@ struct TerminalSettingsView: View {
         }
         .formStyle(.grouped)
         .padding(.bottom, Theme.Spacing.md)
+    }
+}
+
+// MARK: - Shortcuts reference
+
+// Read-only shortcut reference that mirrors the registrations in Shortcuts.swift.
+// Context-sensitive shortcuts (Cmd+1-9, Cmd+W) are listed once with a note explaining
+// their context-dependent behavior.
+struct ShortcutsSettingsView: View {
+    @Environment(\.uiFontOffset) private var fontOffset
+
+    var body: some View {
+        Form {
+            shortcutSection("Tabs & Projects", items: [
+                ("New Tab",              "⌘T"),
+                ("Close Pane / Tab",     "⌘W"),
+                ("Next Tab",             "⌘⇧]"),
+                ("Previous Tab",         "⌘⇧["),
+                ("Select Tab 1–9",       "⌘1 – ⌘9"),
+                ("Select Project 1–9",   "⌃1 – ⌃9"),
+            ])
+
+            shortcutSection("Panes", items: [
+                ("Split Right",          "⌘D"),
+                ("Split Down",           "⌘⇧D"),
+                ("Navigate Left",        "⌘⌥←"),
+                ("Navigate Right",       "⌘⌥→"),
+                ("Navigate Up",          "⌘⌥↑"),
+                ("Navigate Down",        "⌘⌥↓"),
+                ("Resize Left",          "⌘⌃⌥←"),
+                ("Resize Right",         "⌘⌃⌥→"),
+                ("Resize Up",            "⌘⌃⌥↑"),
+                ("Resize Down",          "⌘⌃⌥↓"),
+                ("Zoom / Restore Pane",  "⌘⇧↩"),
+                ("Refocus Terminal",     "Escape"),
+            ])
+
+            shortcutSection("Panels", items: [
+                ("Toggle Sidebar",       "⌘⇧S"),
+                ("Toggle Editor Panel",  "⌘⇧E"),
+                ("Toggle File Panel",    "⌘E"),
+            ])
+
+            shortcutSection("Text Editor  (when editor focused)", items: [
+                ("Select Editor Tab 1–9","⌘1 – ⌘9"),
+                ("Next Editor Tab",      "⌘⇧]"),
+                ("Previous Editor Tab",  "⌘⇧["),
+                ("Close Editor Tab",     "⌘W"),
+            ])
+
+            shortcutSection("Find & Command", items: [
+                ("Find in Terminal",     "⌘F"),
+                ("Command Center",       "⌘P"),
+                ("Open Project Folder",  "⌘O"),
+            ])
+
+            shortcutSection("Font Size", items: [
+                ("Increase Terminal / Editor", "⌘+"),
+                ("Decrease Terminal / Editor", "⌘−"),
+                ("Reset Terminal / Editor",    "⌘0"),
+                ("Increase UI",                "⌘⇧+"),
+                ("Decrease UI",                "⌘⇧−"),
+                ("Reset UI",                   "⌘⇧0"),
+            ])
+        }
+        .formStyle(.grouped)
+    }
+
+    private func shortcutSection(_ title: String, items: [(String, String)]) -> some View {
+        Section(title) {
+            ForEach(items, id: \.0) { label, keys in
+                ShortcutRow(label: label, keys: keys, fontOffset: fontOffset)
+            }
+        }
+    }
+}
+
+private struct ShortcutRow: View {
+    let label: String
+    let keys: String
+    let fontOffset: CGFloat
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.system(size: Theme.FontSize.sm + fontOffset))
+                .foregroundStyle(Theme.Color.textPrimary)
+            Spacer()
+            Text(keys)
+                .font(.system(size: Theme.FontSize.sm + fontOffset, design: .monospaced))
+                .foregroundStyle(Theme.Color.textSecondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Theme.Color.surfaceElevated)
+                )
+        }
     }
 }
