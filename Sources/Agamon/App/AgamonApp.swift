@@ -47,11 +47,12 @@ struct AgamonApp: App {
 // Owns a fresh AppState per window. Using @State here ensures each window instance
 // created by openWindow(id: "main") gets its own independent AppState.
 //
-// Only the first window that appears loads persisted state and registers the global
-// NSEvent monitors. Subsequent windows (opened via ⌘N) start completely empty so
-// they don't conflict with the primary window's terminal sessions or pane UUIDs.
-// NSEvent monitors are app-global — registering them per-window would fire duplicate
-// keyDown/mouseDown handlers, so they're also scoped to the primary window here.
+// load() is gated to the primary window so new windows start empty and don't
+// conflict with the primary window's terminal sessions or pane UUIDs.
+//
+// startModifierMonitor() is called for every window; each monitor gates itself on
+// event.window == hostWindow so modifier hints, click focus, and keyboard shortcuts
+// are always scoped to the correct window and never bleed into inactive windows.
 struct WindowContainerView: View {
     @State private var appState = AppState()
     private static var primaryWindowClaimed = false
@@ -60,10 +61,11 @@ struct WindowContainerView: View {
         ContentView()
             .environment(appState)
             .onAppear {
+                appState.hostWindow = NSApp.keyWindow
+                appState.startModifierMonitor()
                 if !WindowContainerView.primaryWindowClaimed {
                     WindowContainerView.primaryWindowClaimed = true
                     appState.load()
-                    appState.startModifierMonitor()
                 }
             }
     }

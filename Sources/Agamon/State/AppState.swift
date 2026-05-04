@@ -148,6 +148,13 @@ final class AppState {
 
     var showsCtrlShortcuts: Bool { activeModifiers.contains(.control) }
     var showsCmdShortcuts:  Bool { activeModifiers.contains(.command) }
+
+    // Set to the NSWindow that hosts this AppState so NSEvent monitors can gate
+    // themselves to the correct window. Each window gets its own AppState and its
+    // own set of monitors; without this gate, all monitors fire on all AppStates
+    // simultaneously, leaking modifier hints and shortcut actions into inactive windows.
+    weak var hostWindow: NSWindow?
+    private var monitorStarted = false
     var terminalFontSize: CGFloat = {
         let saved = UserDefaults.standard.double(forKey: "terminalFontSize")
         return saved > 0 ? CGFloat(saved) : 13
@@ -714,10 +721,16 @@ final class AppState {
         try? data.write(to: persistURL, options: .atomic)
     }
 
-    // Call once at app start. Tracks modifier-key state, pane click activations, and bell signals.
+    // Called once per window on appear. Each window's AppState registers its own monitors
+    // and gates every handler on event.window == hostWindow so modifier hints, click
+    // focus, and keyboard shortcuts are scoped to the correct window.
     func startModifierMonitor() {
+        guard !monitorStarted else { return }
+        monitorStarted = true
+
         NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            self?.activeModifiers = event.modifierFlags
+            guard let self, event.window == self.hostWindow else { return event }
+            self.activeModifiers = event.modifierFlags
                 .intersection([.command, .control, .option, .shift])
             return event
         }
@@ -726,7 +739,8 @@ final class AppState {
         // which pane) was clicked. SwiftTerm's NSView consumes mouse events so onTapGesture
         // never fires — intercepting here at the event level is the reliable alternative.
         NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            guard let self, let window = event.window else { return event }
+            guard let self, let window = event.window,
+                  window == self.hostWindow else { return event }
             let point = event.locationInWindow
             var view: NSView? = window.contentView?.hitTest(point)
             while let v = view {
@@ -747,7 +761,7 @@ final class AppState {
         // AgamonDiffTextView (diff viewer) via their becomeFirstResponder overrides,
         // so this monitor fires for both editor tab kinds without needing a type check.
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return event }
+            guard let self, event.window == self.hostWindow else { return event }
             let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
 
             // Cmd+1…9 while file panel focused → switch file panel tab, consume event.
@@ -812,7 +826,7 @@ final class AppState {
         // jump to the editor panel instead of silently doing nothing.
         // Passes through when a right-neighbor pane exists so focusPane handles it normally.
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return event }
+            guard let self, event.window == self.hostWindow else { return event }
             guard NSApp.keyWindow?.firstResponder is AgamonTerminalView else { return event }
             let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
             guard mods == [.command, .option], event.keyCode == 124 /* right arrow */ else { return event }
@@ -829,7 +843,7 @@ final class AppState {
         // binds xterm sequences (\x1b[H / \x1b[F), so the trailing ~ appears as a literal.
         // Intercept here (before the event reaches SwiftTerm) and send the correct bytes.
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return event }
+            guard let self, event.window == self.hostWindow else { return event }
             guard NSApp.keyWindow?.firstResponder is AgamonTerminalView else { return event }
             guard event.modifierFlags.intersection([.shift, .control, .option, .command]).isEmpty else { return event }
             guard let tv = self.focusedPaneID.flatMap({ self.terminalViews[$0] }) else { return event }
