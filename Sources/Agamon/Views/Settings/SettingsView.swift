@@ -618,21 +618,76 @@ private struct ShortcutRow: View {
     let keys: String
     let fontOffset: CGFloat
 
+    // Modifier and special-purpose symbols that each get their own key cap.
+    private static let modifierChars: Set<Character> = ["⌘", "⌥", "⌃", "⇧"]
+    private static let specialChars:  Set<Character> = ["←", "→", "↑", "↓", "↩"]
+
+    // Splits a single combo string into per-key tokens.
+    // "⌘⇧]" → ["⌘", "⇧", "]"];  "Escape" → ["Escape"];  "⌘⌃⌥←" → ["⌘","⌃","⌥","←"]
+    private static func tokens(_ s: String) -> [String] {
+        var result: [String] = []
+        var chars = Substring(s)
+        while !chars.isEmpty {
+            let c = chars.removeFirst()
+            if modifierChars.contains(c) || specialChars.contains(c) {
+                result.append(String(c))
+            } else {
+                result.append(String(c) + chars)  // remainder is the main key
+                break
+            }
+        }
+        return result
+    }
+
+    // Handles range notation "⌘1 – ⌘9" → [["⌘","1"], ["⌘","9"]]
+    private var comboParts: [[String]] {
+        keys.components(separatedBy: " – ").map { Self.tokens($0) }
+    }
+
     var body: some View {
         HStack {
             Text(label)
                 .font(.system(size: Theme.FontSize.sm + fontOffset))
                 .foregroundStyle(Theme.Color.textPrimary)
             Spacer()
-            Text(keys)
-                .font(.system(size: Theme.FontSize.sm + fontOffset, design: .monospaced))
-                .foregroundStyle(Theme.Color.textSecondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Theme.Color.surfaceElevated)
-                )
+            HStack(spacing: 5) {
+                ForEach(Array(comboParts.enumerated()), id: \.offset) { i, part in
+                    if i > 0 {
+                        Text("–")
+                            .font(.system(size: Theme.FontSize.xs + fontOffset))
+                            .foregroundStyle(Theme.Color.textTertiary)
+                    }
+                    HStack(spacing: 3) {
+                        ForEach(part, id: \.self) { token in
+                            KeyCap(label: token, fontOffset: fontOffset)
+                        }
+                    }
+                }
+            }
         }
+    }
+}
+
+private struct KeyCap: View {
+    let label: String
+    let fontOffset: CGFloat
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 11 + fontOffset, weight: .medium))
+            .foregroundStyle(Color.white.opacity(0.82))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .frame(minWidth: 22 + fontOffset)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color(white: 0.19))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.5)
+                    )
+                    // Hard bottom shadow simulates the key's lower face
+                    .shadow(color: .black.opacity(0.55), radius: 0, x: 0, y: 2)
+            )
     }
 }
