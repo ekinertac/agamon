@@ -223,6 +223,12 @@ final class AppState {
         persist()
     }
 
+    func renameProject(_ id: UUID, to name: String) {
+        guard let i = projects.firstIndex(where: { $0.id == id }) else { return }
+        projects[i].name = name
+        persist()
+    }
+
     func removeProject(_ id: UUID) {
         if let project = projects.first(where: { $0.id == id }) {
             project.tabs.forEach { evictTerminalViews(for: $0.rootPane) }

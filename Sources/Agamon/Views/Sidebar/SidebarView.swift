@@ -8,6 +8,23 @@
 //          NewProjectSheet in ContentView.swift (creates projects).
 
 import SwiftUI
+import AppKit
+
+@discardableResult
+private func askForName(title: String, placeholder: String, initial: String = "") -> String? {
+    let alert = NSAlert()
+    alert.messageText = title
+    alert.addButton(withTitle: "OK")
+    alert.addButton(withTitle: "Cancel")
+    let tf = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 22))
+    tf.stringValue = initial
+    tf.placeholderString = placeholder
+    alert.accessoryView = tf
+    alert.window.initialFirstResponder = tf
+    guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+    let name = tf.stringValue.trimmingCharacters(in: .whitespaces)
+    return name.isEmpty ? nil : name
+}
 
 struct SidebarView: View {
     @Environment(AppState.self) private var appState
@@ -54,7 +71,14 @@ struct SidebarView: View {
                         appState.selectProject(project.id)
                     }
                     .contextMenu {
-                        Button("Rename") {}
+                        Button("Rename") {
+                            guard let newName = askForName(
+                                title: "Rename \"\(project.name)\"",
+                                placeholder: project.name,
+                                initial: project.name
+                            ) else { return }
+                            appState.renameProject(project.id, to: newName)
+                        }
                         Divider()
                         Button("Remove", role: .destructive) {
                             appState.removeProject(project.id)
