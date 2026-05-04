@@ -1,12 +1,19 @@
 // About panel — shown via Agamon > About Agamon (CommandGroup replacing .appInfo).
 // Declared as a Window scene in AgamonApp so it has its own window instance and
 // can be opened with openWindow(id: "about") from menu commands.
-// Uses NSApp.applicationIconImage so no asset bundle is needed — the icns in
-// packaging/ is already embedded at build time.
+// Icon is loaded from Bundle.module (Resources/AppIcon.icns) so it works in both
+// development (swift run) and the packaged .app bundle. NSApp.applicationIconImage
+// returns the generic folder icon during development because there is no .app wrapper.
 // Related: AgamonApp.swift (Window scene + version constant), Shortcuts.swift (AgamonCommands).
 
 import SwiftUI
 import AppKit
+
+private var appIcon: NSImage {
+    if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+       let img = NSImage(contentsOf: url) { return img }
+    return NSApp.applicationIconImage
+}
 
 struct AboutView: View {
     var body: some View {
@@ -14,7 +21,7 @@ struct AboutView: View {
             Spacer().frame(height: 32)
 
             // App icon
-            Image(nsImage: NSApp.applicationIconImage)
+            Image(nsImage: appIcon)
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 96, height: 96)

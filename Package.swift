@@ -20,6 +20,7 @@ let package = Package(
             path: "Sources/Agamon",
             resources: [
                 .copy("Resources/Themes"),
+                .copy("Resources/AppIcon.icns"),
             ]
         ),
     ]
