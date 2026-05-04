@@ -11,6 +11,8 @@
   <img src="https://img.shields.io/github/license/ekinertac/agamon?style=flat-square&color=green" alt="MIT License" />
 </div>
 
+> **This project is under heavy development.** Most features are at an early, basic stage — expect rough edges, missing functionality, and breaking changes between releases. Contributions and feedback are welcome, but treat this as a work-in-progress, not a polished product.
+
 ---
 
 ![Agamon screenshot](docs/screenshot.png)
