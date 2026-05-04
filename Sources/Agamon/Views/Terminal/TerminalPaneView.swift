@@ -257,6 +257,7 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
         if let cached = appState.terminalViews[paneID] {
             cached.removeFromSuperview()
             cached.processDelegate = context.coordinator
+            context.coordinator.onProcessTerminated = closeHandler(for: paneID)
             return cached
         }
 
@@ -264,6 +265,7 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
         tv.paneID = paneID
         tv.shouldAutoFocus = isActive
         tv.processDelegate = context.coordinator
+        context.coordinator.onProcessTerminated = closeHandler(for: paneID)
         applyTheme(to: tv)
 
         tv.shellLaunch = { [weak tv] in
@@ -290,6 +292,7 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
 
     func updateNSView(_ nsView: AgamonTerminalView, context: Context) {
         context.coordinator.parent = self
+        context.coordinator.onProcessTerminated = closeHandler(for: paneID)
         let currentFamily = nsView.font.familyName ?? ""
         let wantFamily = resolvedFontFamily()
         let currentWeight = nsView.font.fontDescriptor.object(forKey: .face) as? String ?? ""
@@ -341,12 +344,20 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
         return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
     }
 
+    // Captures appState by reference (it's @Observable) so the closure always
+    // calls closePane on the live state even if the struct value was replaced.
+    private func closeHandler(for id: UUID) -> () -> Void {
+        let state = appState
+        return { state.closePane(id) }
+    }
+
 }
 
 // MARK: - Coordinator
 
 final class TerminalCoordinator: NSObject, LocalProcessTerminalViewDelegate {
     var parent: TerminalNSViewWrapper
+    var onProcessTerminated: (() -> Void)?
 
     init(_ parent: TerminalNSViewWrapper) {
         self.parent = parent
@@ -355,7 +366,12 @@ final class TerminalCoordinator: NSObject, LocalProcessTerminalViewDelegate {
     func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
     func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
-    func processTerminated(source: TerminalView, exitCode: Int32?) {}
+
+    func processTerminated(source: TerminalView, exitCode: Int32?) {
+        DispatchQueue.main.async { [weak self] in
+            self?.onProcessTerminated?()
+        }
+    }
 }
 
 // MARK: - Zoom Indicator Badge

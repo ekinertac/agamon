@@ -386,6 +386,32 @@ final class AppState {
     // MARK: - Pane Close
 
     // Removes the focused pane from the split tree. If it's the only pane, closes the tab.
+    func closePane(_ paneID: UUID) {
+        guard let projectID = selectedProjectID,
+              let tabID = selectedTabID,
+              let pi = projects.firstIndex(where: { $0.id == projectID }),
+              let ti = projects[pi].tabs.firstIndex(where: { $0.id == tabID })
+        else { return }
+
+        zoomedPaneID = nil
+        terminalViews.removeValue(forKey: paneID)
+        TmuxController.shared.killSession(for: paneID)
+        attentionPaneIDs.remove(paneID)
+        if let newRoot = projects[pi].tabs[ti].rootPane.removingLeaf(id: paneID) {
+            projects[pi].tabs[ti].rootPane = newRoot
+            let survivingID = newRoot.firstLeafID
+            focusedPaneID = survivingID
+            tabFocusMemory[tabID] = survivingID
+            attentionPaneIDs.remove(survivingID)
+            persist()
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .agamonFocusTerminal, object: survivingID)
+            }
+        } else {
+            removeTab(tabID, from: projectID)
+        }
+    }
+
     func closeCurrentPane() {
         guard let projectID = selectedProjectID,
               let tabID = selectedTabID,
