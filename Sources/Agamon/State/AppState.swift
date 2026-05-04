@@ -147,6 +147,21 @@ final class AppState {
         didSet { UserDefaults.standard.set(Double(terminalFontSize), forKey: "terminalFontSize") }
     }
 
+    var editorFontSize: CGFloat = {
+        let saved = UserDefaults.standard.double(forKey: "editorFontSize")
+        return saved > 0 ? CGFloat(saved) : 15
+    }() {
+        didSet { UserDefaults.standard.set(Double(editorFontSize), forKey: "editorFontSize") }
+    }
+
+    // Offset added to every Theme.FontSize.* constant in UI views (sidebar, tabs, file panel, etc.).
+    // Terminal and editor ignore this — they have their own size controls.
+    var uiFontSizeOffset: CGFloat = {
+        CGFloat(UserDefaults.standard.double(forKey: "uiFontSizeOffset"))
+    }() {
+        didSet { UserDefaults.standard.set(Double(uiFontSizeOffset), forKey: "uiFontSizeOffset") }
+    }
+
     var terminalFontFamily: String = UserDefaults.standard.string(forKey: "terminalFontFamily") ?? "" {
         didSet { UserDefaults.standard.set(terminalFontFamily, forKey: "terminalFontFamily") }
     }
@@ -411,13 +426,23 @@ final class AppState {
 
     // MARK: - Font Size
 
-    func increaseFontSize() { setFontSize(min(terminalFontSize + 1, 32)) }
-    func decreaseFontSize() { setFontSize(max(terminalFontSize - 1, 8)) }
-    func resetFontSize()    { setFontSize(13) }
-
-    private func setFontSize(_ size: CGFloat) {
-        terminalFontSize = size  // didSet persists to UserDefaults
+    // Cmd+/- is context-aware: targets editor when it's focused, terminal otherwise.
+    func increaseFontSize() {
+        if editorFocused { editorFontSize  = min(editorFontSize  + 1, 48) }
+        else             { terminalFontSize = min(terminalFontSize + 1, 48) }
     }
+    func decreaseFontSize() {
+        if editorFocused { editorFontSize  = max(editorFontSize  - 1, 8) }
+        else             { terminalFontSize = max(terminalFontSize - 1, 8) }
+    }
+    func resetFontSize() {
+        if editorFocused { editorFontSize  = 15 }
+        else             { terminalFontSize = 13 }
+    }
+
+    func increaseUIFontSize() { uiFontSizeOffset = min(uiFontSizeOffset + 1, 8) }
+    func decreaseUIFontSize() { uiFontSizeOffset = max(uiFontSizeOffset - 1, -4) }
+    func resetUIFontSize()    { uiFontSizeOffset = 0 }
 
     // MARK: - Editor Panel
 

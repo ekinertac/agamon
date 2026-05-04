@@ -17,6 +17,7 @@ private enum FilePanelTab: Int { case files = 0, diff = 1 }
 
 struct FilePanelView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.uiFontOffset) private var fontOffset
     @State private var treeFocused: Bool = false
     private var activeTab: FilePanelTab { FilePanelTab(rawValue: appState.filePanelTabIndex) ?? .files }
     // Path → single-char badge: "M", "A", "D", "R", "?"
@@ -148,7 +149,7 @@ struct FilePanelView: View {
         VStack {
             Spacer()
             Text("No project open")
-                .font(.system(size: Theme.FontSize.sm))
+                .font(.system(size: Theme.FontSize.sm + fontOffset))
                 .foregroundStyle(Theme.Color.textTertiary)
             Spacer()
         }

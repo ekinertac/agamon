@@ -28,6 +28,8 @@ private func askForName(title: String, placeholder: String, initial: String = ""
 
 struct SidebarView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.uiFontOffset) private var fontOffset
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,7 +48,7 @@ struct SidebarView: View {
             Spacer()
             Button(action: appState.openProject) {
                 Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 12 + fontOffset, weight: .medium))
                     .opacity(appState.showsCmdShortcuts ? 0 : 1)
                     .frame(minWidth: 20, minHeight: 20)
             }
@@ -97,10 +99,10 @@ struct SidebarView: View {
             Rectangle().fill(Theme.Color.border).frame(height: 1)
             HStack {
                 Button {
-                    // TODO: settings sheet
+                    openSettings()
                 } label: {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 14))
+                        .font(.system(size: 14 + fontOffset))
                 }
                 .buttonStyle(IconButtonStyle())
                 Spacer()
@@ -115,10 +117,11 @@ struct SidebarView: View {
 
 struct AttentionBadge: View {
     let count: Int
+    @Environment(\.uiFontOffset) private var fontOffset
 
     var body: some View {
         Text("\(count)")
-            .font(.system(size: 10, weight: .semibold))
+            .font(.system(size: 10 + fontOffset, weight: .semibold))
             .foregroundStyle(.black)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
@@ -136,22 +139,23 @@ struct ProjectRow: View {
     let index: Int
 
     @Environment(AppState.self) private var appState
+    @Environment(\.uiFontOffset) private var fontOffset
     @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: Theme.Spacing.sm) {
             Image(systemName: "folder.fill")
-                .font(.system(size: 12))
+                .font(.system(size: 12 + fontOffset))
                 .foregroundStyle(isSelected ? Theme.Color.accent : Theme.Color.textSecondary)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(project.name)
-                    .font(.system(size: Theme.FontSize.sm, weight: isSelected ? .medium : .regular))
+                    .font(.system(size: Theme.FontSize.sm + fontOffset, weight: isSelected ? .medium : .regular))
                     .foregroundStyle(isSelected ? Theme.Color.textPrimary : Theme.Color.textSecondary)
                     .lineLimit(1)
 
                 Text(URL(fileURLWithPath: project.rootPath).lastPathComponent)
-                    .font(.system(size: Theme.FontSize.xs, design: .monospaced))
+                    .font(.system(size: Theme.FontSize.xs + fontOffset, design: .monospaced))
                     .foregroundStyle(Theme.Color.textTertiary)
                     .lineLimit(1)
             }

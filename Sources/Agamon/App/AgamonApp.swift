@@ -33,6 +33,7 @@ struct AgamonApp: App {
         Settings {
             SettingsView()
                 .environment(settingsAppState)
+                .environment(\.uiFontOffset, settingsAppState.uiFontSizeOffset)
         }
         .windowResizability(.contentMinSize)
     }
@@ -89,12 +90,19 @@ struct AgamonCommands: Commands {
         }
 
         CommandMenu("View") {
-            Button("Increase Font Size") { appState?.increaseFontSize() }
+            Button("Increase Terminal/Editor Font") { appState?.increaseFontSize() }
                 .keyboardShortcut("+", modifiers: .command)
-            Button("Decrease Font Size") { appState?.decreaseFontSize() }
+            Button("Decrease Terminal/Editor Font") { appState?.decreaseFontSize() }
                 .keyboardShortcut("-", modifiers: .command)
-            Button("Reset Font Size")    { appState?.resetFontSize() }
+            Button("Reset Terminal/Editor Font")    { appState?.resetFontSize() }
                 .keyboardShortcut("0", modifiers: .command)
+            Divider()
+            Button("Increase UI Font Size") { appState?.increaseUIFontSize() }
+                .keyboardShortcut("+", modifiers: [.command, .shift])
+            Button("Decrease UI Font Size") { appState?.decreaseUIFontSize() }
+                .keyboardShortcut("-", modifiers: [.command, .shift])
+            Button("Reset UI Font Size")    { appState?.resetUIFontSize() }
+                .keyboardShortcut("0", modifiers: [.command, .shift])
         }
 
         CommandMenu("Tab") {

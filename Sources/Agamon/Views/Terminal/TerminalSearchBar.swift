@@ -17,11 +17,13 @@ struct TerminalSearchBar: View {
     var onPrev: () -> Void
     var onClose: () -> Void
 
+    @Environment(\.uiFontOffset) private var fontOffset
+
     var body: some View {
         HStack(spacing: 4) {
             TextField("Find in terminal…", text: $query)
                 .textFieldStyle(.plain)
-                .font(.system(size: Theme.FontSize.sm, design: .monospaced))
+                .font(.system(size: Theme.FontSize.sm + fontOffset, design: .monospaced))
                 .foregroundStyle(matchFound || query.isEmpty ? Theme.Color.textPrimary : Theme.Color.danger)
                 .frame(width: 190)
                 .focused($isFocused)

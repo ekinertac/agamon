@@ -10,10 +10,11 @@ import AppKit
 
 struct PrimaryButtonStyle: ButtonStyle {
     var compact: Bool = false
+    @Environment(\.uiFontOffset) private var fontOffset
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: compact ? Theme.FontSize.xs : Theme.FontSize.sm, weight: .medium))
+            .font(.system(size: (compact ? Theme.FontSize.xs : Theme.FontSize.sm) + fontOffset, weight: .medium))
             .foregroundStyle(SwiftUI.Color.white)
             .padding(.horizontal, compact ? Theme.Spacing.sm : Theme.Spacing.md)
             .padding(.vertical,   compact ? Theme.Spacing.xs : Theme.Spacing.sm)
@@ -28,9 +29,11 @@ struct PrimaryButtonStyle: ButtonStyle {
 }
 
 struct GhostButtonStyle: ButtonStyle {
+    @Environment(\.uiFontOffset) private var fontOffset
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: Theme.FontSize.sm, weight: .regular))
+            .font(.system(size: Theme.FontSize.sm + fontOffset, weight: .regular))
             .foregroundStyle(configuration.isPressed
                              ? Theme.Color.textPrimary
                              : Theme.Color.textSecondary)
@@ -74,6 +77,7 @@ struct IconButtonStyle: ButtonStyle {
 // two adjacent "key cap" pills (e.g. "⌘" + "1"), matching macOS shortcut conventions.
 struct ShortcutBadge: View {
     let label: String
+    @Environment(\.uiFontOffset) private var fontOffset
 
     // Everything before the last character = modifiers (⌘, ⌃, ⌥, ⇧, combinations).
     // Last character = the key itself.
@@ -89,7 +93,7 @@ struct ShortcutBadge: View {
 
     private func keyCap(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: Theme.FontSize.badge, weight: .semibold, design: .monospaced))
+            .font(.system(size: Theme.FontSize.badge + fontOffset, weight: .semibold, design: .monospaced))
             .foregroundStyle(Theme.Color.accent)
             .padding(.horizontal, 4)
             .padding(.vertical, 2)
@@ -107,9 +111,11 @@ struct ShortcutBadge: View {
 // MARK: - Modifier Helpers
 
 struct SectionHeaderStyle: ViewModifier {
+    @Environment(\.uiFontOffset) private var fontOffset
+
     func body(content: Content) -> some View {
         content
-            .font(.system(size: Theme.FontSize.xs, weight: .semibold))
+            .font(.system(size: Theme.FontSize.xs + fontOffset, weight: .semibold))
             .foregroundStyle(Theme.Color.textTertiary)
             .textCase(.uppercase)
             .tracking(0.8)

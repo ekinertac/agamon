@@ -27,6 +27,7 @@ struct SettingsView: View {
 
 struct AppearanceSettingsView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.uiFontOffset) private var fontOffset
 
     var body: some View {
         @Bindable var appState = appState
@@ -39,7 +40,7 @@ struct AppearanceSettingsView: View {
                             Slider(value: $appState.inactivePaneDimAmount, in: 0.05...0.9)
                                 .frame(width: 180)
                             Text("\(Int(appState.inactivePaneDimAmount * 100))%")
-                                .font(.system(size: Theme.FontSize.xs, design: .monospaced))
+                                .font(.system(size: Theme.FontSize.xs + fontOffset, design: .monospaced))
                                 .foregroundStyle(Theme.Color.textSecondary)
                                 .frame(width: 36, alignment: .trailing)
                         }
@@ -60,7 +61,7 @@ struct AppearanceSettingsView: View {
 
                 HStack {
                     Text("Drop Ghostty-format theme files into your themes folder and restart.")
-                        .font(.system(size: Theme.FontSize.xs))
+                        .font(.system(size: Theme.FontSize.xs + fontOffset))
                         .foregroundStyle(Theme.Color.textTertiary)
                     Spacer()
                     Button("Open Folder") { NSWorkspace.shared.open(TerminalTheme.userThemesDir) }
@@ -76,6 +77,7 @@ struct AppearanceSettingsView: View {
 
 struct TextSettingsView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.uiFontOffset) private var fontOffset
 
     // Available face names for the currently selected font family.
     private var availableWeights: [String] {
@@ -99,9 +101,9 @@ struct TextSettingsView: View {
                 Toggle("Line wrap", isOn: $appState.editorLineWrap)
             }
 
-            Section("Size & Weight") {
-                LabeledContent("Size") {
-                    FontSizeField(value: $appState.terminalFontSize, range: 8...32)
+            Section("Terminal") {
+                LabeledContent("Font Size") {
+                    FontSizeField(value: $appState.terminalFontSize, range: 8...48)
                 }
                 LabeledContent("Weight") {
                     Picker("", selection: $appState.terminalFontWeight) {
@@ -117,6 +119,21 @@ struct TextSettingsView: View {
                         }
                     }
                 }
+            }
+
+            Section("Text Editor") {
+                LabeledContent("Font Size") {
+                    FontSizeField(value: $appState.editorFontSize, range: 8...48)
+                }
+            }
+
+            Section("UI") {
+                LabeledContent("Font Size Offset") {
+                    FontSizeField(value: $appState.uiFontSizeOffset, range: -4...8)
+                }
+                Text("Adjusts all UI text (sidebar, tabs, file panel). Terminal and editor have their own size controls.")
+                    .font(.system(size: Theme.FontSize.xs + fontOffset))
+                    .foregroundStyle(Theme.Color.textTertiary)
             }
         }
         .formStyle(.grouped)
@@ -221,6 +238,7 @@ struct FontSizeField: NSViewRepresentable {
 // Same searchable + keyboard-nav pattern as ThemePickerSection.
 struct FontPickerSection: View {
     @Binding var selectedFamily: String
+    @Environment(\.uiFontOffset) private var fontOffset
     @State private var query: String = ""
     @State private var cursorIndex: Int = 0
     @FocusState private var listFocused: Bool
@@ -246,10 +264,10 @@ struct FontPickerSection: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(Theme.Color.textTertiary)
-                    .font(.system(size: Theme.FontSize.sm))
+                    .font(.system(size: Theme.FontSize.sm + fontOffset))
                 TextField("Search fonts…", text: $query)
                     .textFieldStyle(.plain)
-                    .font(.system(size: Theme.FontSize.sm))
+                    .font(.system(size: Theme.FontSize.sm + fontOffset))
                     .onChange(of: query) { cursorIndex = 0 }
                 if !query.isEmpty {
                     Button { query = "" } label: {
@@ -318,12 +336,13 @@ struct FontRow: View {
     let family: String
     let isSelected: Bool
     var isCursor: Bool = false
+    @Environment(\.uiFontOffset) private var fontOffset
     @State private var hovered = false
 
     var body: some View {
         HStack {
             Text(family)
-                .font(.custom(family, size: Theme.FontSize.sm))
+                .font(.custom(family, size: Theme.FontSize.sm + fontOffset))
                 .foregroundStyle(isSelected || isCursor ? Theme.Color.textPrimary : Theme.Color.textSecondary)
             Spacer()
             if isSelected {
@@ -353,6 +372,7 @@ struct ThemePickerSection: View {
     @Binding var darkTheme: String
     @Binding var lightTheme: String
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.uiFontOffset) private var fontOffset
 
     @State private var editingDark: Bool = true
     @State private var query: String = ""
@@ -383,10 +403,10 @@ struct ThemePickerSection: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(Theme.Color.textTertiary)
-                    .font(.system(size: Theme.FontSize.sm))
+                    .font(.system(size: Theme.FontSize.sm + fontOffset))
                 TextField("Search themes…", text: $query)
                     .textFieldStyle(.plain)
-                    .font(.system(size: Theme.FontSize.sm))
+                    .font(.system(size: Theme.FontSize.sm + fontOffset))
                     .onChange(of: query) { cursorIndex = 0 }
                 if !query.isEmpty {
                     Button { query = "" } label: {
@@ -464,12 +484,13 @@ struct ThemeRow: View {
     let name: String
     let isSelected: Bool
     var isCursor: Bool = false
+    @Environment(\.uiFontOffset) private var fontOffset
     @State private var hovered = false
 
     var body: some View {
         HStack {
             Text(name)
-                .font(.system(size: Theme.FontSize.sm))
+                .font(.system(size: Theme.FontSize.sm + fontOffset))
                 .foregroundStyle(isSelected || isCursor ? Theme.Color.textPrimary : Theme.Color.textSecondary)
             Spacer()
             if isSelected {
@@ -493,6 +514,7 @@ struct ThemeRow: View {
 
 struct TerminalSettingsView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.uiFontOffset) private var fontOffset
 
     var body: some View {
         @Bindable var appState = appState
@@ -504,7 +526,7 @@ struct TerminalSettingsView: View {
                         .textFieldStyle(.roundedBorder)
                 }
                 Text("Takes effect for new terminals. Existing sessions keep the shell they started with.")
-                    .font(.system(size: Theme.FontSize.xs))
+                    .font(.system(size: Theme.FontSize.xs + fontOffset))
                     .foregroundStyle(Theme.Color.textTertiary)
             }
         }

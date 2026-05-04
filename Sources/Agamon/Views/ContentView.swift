@@ -59,6 +59,7 @@ struct ContentView: View {
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
+        .environment(\.uiFontOffset, appState.uiFontSizeOffset)
         .background(Theme.Color.background)
         .preferredColorScheme(.dark)
         .onAppear {
@@ -150,32 +151,32 @@ struct ResizeDivider: View {
 
 struct WelcomeView: View {
     @Environment(AppState.self) private var appState
-    @State private var showingNewProject = false
+    @Environment(\.uiFontOffset) private var fontOffset
 
     var body: some View {
         VStack(spacing: Theme.Spacing.lg) {
             Text("Agamon")
-                .font(.system(size: 28, weight: .semibold))
+                .font(.system(size: 28 + fontOffset, weight: .semibold))
                 .foregroundStyle(Theme.Color.textPrimary)
 
             Text("A focused terminal for running agents")
-                .font(.system(size: Theme.FontSize.md))
+                .font(.system(size: Theme.FontSize.md + fontOffset))
                 .foregroundStyle(Theme.Color.textSecondary)
 
             Button("Open Project Folder") {
-                showingNewProject = true
+                appState.openProject()
             }
             .buttonStyle(PrimaryButtonStyle())
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Color.background)
-        .sheet(isPresented: $showingNewProject) {
-            NewProjectSheet()
-        }
     }
 }
 
 private func emptyState(_ message: String) -> some View {
+    // This is a free function — it can't read @Environment, so it
+    // uses the default body text size. Views that call this pass through
+    // the offset via the environment automatically.
     Text(message)
         .font(.system(size: Theme.FontSize.md))
         .foregroundStyle(Theme.Color.textTertiary)
@@ -183,76 +184,3 @@ private func emptyState(_ message: String) -> some View {
         .background(Theme.Color.background)
 }
 
-// MARK: - New Project Sheet
-
-struct NewProjectSheet: View {
-    @Environment(AppState.self) private var appState
-    @Environment(\.dismiss) private var dismiss
-    @State private var name: String = ""
-    @State private var rootPath: String = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-            Text("New Project")
-                .font(.system(size: Theme.FontSize.xl, weight: .semibold))
-                .foregroundStyle(Theme.Color.textPrimary)
-
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text("Name").sectionHeader()
-                TextField("My Project", text: $name)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: Theme.FontSize.md))
-                    .foregroundStyle(Theme.Color.textPrimary)
-                    .padding(Theme.Spacing.sm)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.Radius.sm)
-                            .fill(Theme.Color.surfaceElevated)
-                    )
-            }
-
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text("Root Directory").sectionHeader()
-                HStack {
-                    TextField("/path/to/project", text: $rootPath)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: Theme.FontSize.md, design: .monospaced))
-                        .foregroundStyle(Theme.Color.textPrimary)
-                        .padding(Theme.Spacing.sm)
-                        .background(
-                            RoundedRectangle(cornerRadius: Theme.Radius.sm)
-                                .fill(Theme.Color.surfaceElevated)
-                        )
-                    Button("Browse") { pickFolder() }
-                        .buttonStyle(GhostButtonStyle())
-                }
-            }
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }.buttonStyle(GhostButtonStyle())
-                Button("Create") {
-                    let projectName = name.isEmpty ? URL(fileURLWithPath: rootPath).lastPathComponent : name
-                    appState.addProject(name: projectName, rootPath: rootPath)
-                    dismiss()
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(rootPath.isEmpty)
-            }
-        }
-        .padding(Theme.Spacing.xl)
-        .frame(width: 420)
-        .background(Theme.Color.surface)
-        .preferredColorScheme(.dark)
-    }
-
-    private func pickFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url {
-            rootPath = url.path
-            if name.isEmpty { name = url.lastPathComponent }
-        }
-    }
-}

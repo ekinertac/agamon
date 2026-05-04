@@ -98,6 +98,21 @@ enum Theme {
     }
 }
 
+// MARK: - UI Font Offset Environment Key
+
+// Injected at ContentView root from appState.uiFontSizeOffset.
+// Every view that renders Theme.FontSize.* text adds this offset so UI text
+// scales globally without touching terminal or editor content.
+private struct UIFontOffsetKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+extension EnvironmentValues {
+    var uiFontOffset: CGFloat {
+        get { self[UIFontOffsetKey.self] }
+        set { self[UIFontOffsetKey.self] = newValue }
+    }
+}
+
 // MARK: - Helpers
 
 extension SwiftUI.Color {

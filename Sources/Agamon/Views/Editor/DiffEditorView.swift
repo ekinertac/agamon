@@ -22,6 +22,7 @@ struct DiffEditorView: View {
     var body: some View {
         DiffTextView(content: content,
                      onFocusChange: { focused in appState.editorFocused = focused })
+            .onChange(of: appState.editorFontSize) { load() }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear { load() }
             .onChange(of: fileURL) { load() }
@@ -36,12 +37,13 @@ struct DiffEditorView: View {
                 ? String(fileURL.path.dropFirst(prefix.count))
                 : fileURL.path
         }()
-        let root = rootPath
+        let root     = rootPath
+        let fontSize = appState.editorFontSize
         Task.detached(priority: .userInitiated) {
             let raw  = gitOutput(["diff", "HEAD", "--", relPath], in: root)
             let text = raw.isEmpty ? "(no diff \u{2014} file may be untracked or unchanged)" : raw
             // Build NSAttributedString on the main thread — it is not Sendable.
-            await MainActor.run { content = DiffRenderer.render(text) }
+            await MainActor.run { content = DiffRenderer.render(text, fontSize: fontSize) }
         }
     }
 }
@@ -116,26 +118,25 @@ struct DiffTextView: NSViewRepresentable {
 // MARK: - DiffRenderer
 
 struct DiffRenderer {
-    private static let baseFont = NSFont.monospacedSystemFont(ofSize: Theme.FontSize.sm, weight: .regular)
-    private static let boldFont = NSFont.monospacedSystemFont(ofSize: Theme.FontSize.sm, weight: .semibold)
-
     private static let addColor  = NSColor(red: 0.40, green: 0.78, blue: 0.42, alpha: 1)
     private static let delColor  = NSColor(red: 0.93, green: 0.36, blue: 0.36, alpha: 1)
     private static let hunkColor = NSColor(red: 0.29, green: 0.62, blue: 1.00, alpha: 1)
     private static let dimColor  = NSColor(white: 0.38, alpha: 1)
     private static let baseColor = NSColor(white: 0.72, alpha: 1)
 
-    static func render(_ diff: String) -> NSAttributedString {
+    static func render(_ diff: String, fontSize: CGFloat = Theme.FontSize.sm) -> NSAttributedString {
+        let baseFont = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        let boldFont = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold)
         let result = NSMutableAttributedString()
         for line in diff.components(separatedBy: "\n") {
-            let (color, font) = style(for: line)
+            let (color, font) = style(for: line, baseFont: baseFont, boldFont: boldFont)
             result.append(NSAttributedString(string: line + "\n",
                                              attributes: [.foregroundColor: color, .font: font]))
         }
         return result
     }
 
-    private static func style(for line: String) -> (NSColor, NSFont) {
+    private static func style(for line: String, baseFont: NSFont, boldFont: NSFont) -> (NSColor, NSFont) {
         if line.hasPrefix("+") && !line.hasPrefix("+++") { return (addColor,  baseFont) }
         if line.hasPrefix("-") && !line.hasPrefix("---") { return (delColor,  baseFont) }
         if line.hasPrefix("@@")                          { return (hunkColor, boldFont) }

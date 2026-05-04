@@ -22,6 +22,7 @@ struct DiffFileItem: Identifiable {
 struct DiffListView: View {
     let rootPath: String
     @Environment(AppState.self) private var appState
+    @Environment(\.uiFontOffset) private var fontOffset
     @State private var items: [DiffFileItem] = []
     @State private var loaded = false
 
@@ -31,7 +32,7 @@ struct DiffListView: View {
                 VStack {
                     Spacer()
                     Text("No diff")
-                        .font(.system(size: Theme.FontSize.sm))
+                        .font(.system(size: Theme.FontSize.sm + fontOffset))
                         .foregroundStyle(Theme.Color.textTertiary)
                     Spacer()
                 }
@@ -84,17 +85,18 @@ struct DiffListView: View {
 struct DiffFileRow: View {
     let item: DiffFileItem
     @Environment(AppState.self) private var appState
+    @Environment(\.uiFontOffset) private var fontOffset
     @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: Theme.Spacing.xs) {
             Image(systemName: "doc.fill")
-                .font(.system(size: 11))
+                .font(.system(size: 11 + fontOffset))
                 .foregroundStyle(Theme.Color.textTertiary)
                 .frame(width: 14, alignment: .center)
 
             Text(item.name)
-                .font(.system(size: Theme.FontSize.sm))
+                .font(.system(size: Theme.FontSize.sm + fontOffset))
                 .foregroundStyle(Theme.Color.textSecondary)
                 .lineLimit(1)
 
@@ -102,10 +104,10 @@ struct DiffFileRow: View {
 
             HStack(spacing: 4) {
                 Text("+\(item.added)")
-                    .font(.system(size: Theme.FontSize.xs, weight: .medium, design: .monospaced))
+                    .font(.system(size: Theme.FontSize.xs + fontOffset, weight: .medium, design: .monospaced))
                     .foregroundStyle(Theme.Color.success)
                 Text("-\(item.deleted)")
-                    .font(.system(size: Theme.FontSize.xs, weight: .medium, design: .monospaced))
+                    .font(.system(size: Theme.FontSize.xs + fontOffset, weight: .medium, design: .monospaced))
                     .foregroundStyle(Theme.Color.danger)
             }
         }

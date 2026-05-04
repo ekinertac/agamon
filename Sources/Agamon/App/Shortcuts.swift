@@ -101,11 +101,17 @@ struct ShortcutHandler: View {
             Button("", action: appState.togglePaneZoom)
                 .keyboardShortcut(.return, modifiers: [.command, .shift])
 
-            // Font size
+            // Terminal / editor font size (context-aware: targets editor when focused, terminal otherwise)
             Button("", action: appState.increaseFontSize).keyboardShortcut("+", modifiers: .command)
             Button("", action: appState.increaseFontSize).keyboardShortcut("=", modifiers: .command)
             Button("", action: appState.decreaseFontSize).keyboardShortcut("-", modifiers: .command)
             Button("", action: appState.resetFontSize).keyboardShortcut("0", modifiers: .command)
+
+            // UI font size (⌘⇧+/-)
+            Button("", action: appState.increaseUIFontSize).keyboardShortcut("+", modifiers: [.command, .shift])
+            Button("", action: appState.increaseUIFontSize).keyboardShortcut("=", modifiers: [.command, .shift])
+            Button("", action: appState.decreaseUIFontSize).keyboardShortcut("-", modifiers: [.command, .shift])
+            Button("", action: appState.resetUIFontSize).keyboardShortcut("0", modifiers: [.command, .shift])
         }
         .opacity(0)
         .allowsHitTesting(false)

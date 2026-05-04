@@ -196,6 +196,7 @@ struct FileTreeRow: View {
     var onReload: () -> Void = {}
 
     @Environment(AppState.self) private var appState
+    @Environment(\.uiFontOffset) private var fontOffset
     @State private var isHovered = false
     @State private var lastTapTime: Date = .distantPast
 
@@ -229,7 +230,7 @@ struct FileTreeRow: View {
             Spacer().frame(width: Theme.Spacing.xs)
 
             Text(item.name)
-                .font(.system(size: Theme.FontSize.sm,
+                .font(.system(size: Theme.FontSize.sm + fontOffset,
                               weight: item.isDirectory ? .medium : .regular))
                 .foregroundStyle(isHighlighted ? Theme.Color.textPrimary : Theme.Color.textSecondary)
                 .lineLimit(1)
@@ -238,7 +239,7 @@ struct FileTreeRow: View {
 
             if let badge = gitBadge {
                 Text(badge)
-                    .font(.system(size: Theme.FontSize.xs, weight: .semibold, design: .monospaced))
+                    .font(.system(size: Theme.FontSize.xs + fontOffset, weight: .semibold, design: .monospaced))
                     .foregroundStyle(badgeColor(badge))
                     .frame(width: 14, alignment: .center)
                     .padding(.trailing, Theme.Spacing.xs)

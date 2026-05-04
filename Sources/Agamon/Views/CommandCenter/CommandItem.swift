@@ -34,9 +34,15 @@ struct CommandItem: Identifiable {
             CommandItem(title: "Close Pane",         subtitle: "⌘W",   icon: "xmark.rectangle",      category: .command, action: appState.closeCurrentPane),
             CommandItem(title: "Toggle File Panel",  subtitle: "⌘E",   icon: "sidebar.right",         category: .command, action: appState.toggleFilePanel),
             CommandItem(title: "Open Project Folder…", subtitle: "⌘O", icon: "folder.badge.plus",     category: .command, action: appState.openProject),
-            CommandItem(title: "Increase Font Size", subtitle: "⌘+",   icon: "plus.magnifyingglass",  category: .command, action: appState.increaseFontSize),
-            CommandItem(title: "Decrease Font Size", subtitle: "⌘−",   icon: "minus.magnifyingglass", category: .command, action: appState.decreaseFontSize),
-            CommandItem(title: "Reset Font Size",    subtitle: "⌘0",   icon: "textformat",            category: .command, action: appState.resetFontSize),
+            CommandItem(title: appState.editorFocused ? "Increase Editor Font" : "Increase Terminal Font",
+                        subtitle: "⌘+",  icon: "plus.magnifyingglass",  category: .command, action: appState.increaseFontSize),
+            CommandItem(title: appState.editorFocused ? "Decrease Editor Font" : "Decrease Terminal Font",
+                        subtitle: "⌘−",  icon: "minus.magnifyingglass", category: .command, action: appState.decreaseFontSize),
+            CommandItem(title: "Reset Terminal/Editor Font",
+                        subtitle: "⌘0",  icon: "textformat",            category: .command, action: appState.resetFontSize),
+            CommandItem(title: "Increase UI Font Size", subtitle: "⌘⇧+", icon: "textformat.size.larger",  category: .command, action: appState.increaseUIFontSize),
+            CommandItem(title: "Decrease UI Font Size", subtitle: "⌘⇧−", icon: "textformat.size.smaller", category: .command, action: appState.decreaseUIFontSize),
+            CommandItem(title: "Reset UI Font Size",    subtitle: "⌘⇧0", icon: "textformat",              category: .command, action: appState.resetUIFontSize),
             CommandItem(title: appState.editorLineWrap ? "Disable Line Wrap" : "Enable Line Wrap",
                         subtitle: nil, icon: "text.word.spacing", category: .command) {
                 appState.editorLineWrap.toggle()

@@ -34,6 +34,7 @@ struct FileEditorView: View {
                 onChange: { isDirty = true },
                 focusRequestID: appState.editorFocusRequestID,
                 fileExtension: url.pathExtension,
+                fontSize: appState.editorFontSize,
                 lineWrap: appState.editorLineWrap,
                 themePalette: activeTheme?.rawPalette ?? [],
                 themeForeground: activeTheme?.foreground ?? NSColor(white: 0.85, alpha: 1),
@@ -60,13 +61,13 @@ struct FileEditorView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.Color.danger)
                 Text(error)
-                    .font(.system(size: Theme.FontSize.xs))
+                    .font(.system(size: appState.editorFontSize - 2))
                     .foregroundStyle(Theme.Color.danger)
                     .lineLimit(1)
             }
             Spacer()
             Text("Ln \(cursorLine), Col \(cursorCol)")
-                .font(.system(size: Theme.FontSize.xs, design: .monospaced))
+                .font(.system(size: appState.editorFontSize - 2, design: .monospaced))
                 .foregroundStyle(Theme.Color.textTertiary)
         }
         .padding(.horizontal, Theme.Spacing.md)
@@ -317,7 +318,11 @@ final class AgamonEditorTextView: NSTextView {
 // without any extra wiring from the SwiftUI layer.
 final class LineNumberRulerView: NSRulerView {
     private weak var textView: NSTextView?
-    private let lineFont: NSFont
+    // Derived from the text view's current font so it automatically follows editorFontSize changes.
+    private var lineFont: NSFont {
+        let size = max(9, (textView?.font?.pointSize ?? Theme.FontSize.sm) - 2.5)
+        return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+    }
     private let dimColor:    NSColor = NSColor(white: 0.32, alpha: 1)
     private let activeColor: NSColor = NSColor(white: 0.60, alpha: 1)
     private let bgColor:     NSColor = NSColor(white: 0.10, alpha: 1)
@@ -325,7 +330,6 @@ final class LineNumberRulerView: NSRulerView {
 
     init(textView: NSTextView, scrollView: NSScrollView) {
         self.textView = textView
-        self.lineFont = NSFont.monospacedSystemFont(ofSize: Theme.FontSize.xs - 0.5, weight: .regular)
         super.init(scrollView: scrollView, orientation: .verticalRuler)
         clientView = textView
         NotificationCenter.default.addObserver(
@@ -420,6 +424,7 @@ struct EditorTextView: NSViewRepresentable {
     // the same call) is still honored.
     var focusRequestID: Int
     var fileExtension: String
+    var fontSize: CGFloat = Theme.FontSize.sm
     var lineWrap: Bool = true
     var themePalette: [NSColor] = []
     var themeForeground: NSColor = NSColor(white: 0.85, alpha: 1)
@@ -455,7 +460,7 @@ struct EditorTextView: NSViewRepresentable {
         textView.isEditable = true
         textView.isSelectable = true
         textView.allowsUndo = true
-        let editorFont  = NSFont.monospacedSystemFont(ofSize: Theme.FontSize.sm, weight: .regular)
+        let editorFont  = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
         let editorColor = NSColor(white: 0.85, alpha: 1)
         textView.font            = editorFont
         textView.textColor       = editorColor
@@ -495,6 +500,14 @@ struct EditorTextView: NSViewRepresentable {
         if paletteChanged || prevParent.themeBackground != themeBackground {
             scrollView.backgroundColor = themeBackground
             textView.backgroundColor   = themeBackground
+        }
+
+        if prevParent.fontSize != fontSize {
+            let newFont = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+            textView.font = newFont
+            textView.typingAttributes = [.font: newFont, .foregroundColor: NSColor(white: 0.85, alpha: 1)]
+            context.coordinator.applyHighlighting(to: textView)
+            scrollView.verticalRulerView?.needsDisplay = true
         }
 
         if let tv = scrollView.documentView as? AgamonEditorTextView, tv.fileExtension != fileExtension {
@@ -600,11 +613,11 @@ struct EditorTextView: NSViewRepresentable {
         func applyHighlighting(to tv: NSTextView) {
             guard let storage = tv.textStorage else { return }
             let lang     = SyntaxLanguage.detect(fileExtension: parent.fileExtension)
-            let baseFont = NSFont.monospacedSystemFont(ofSize: Theme.FontSize.sm, weight: .regular)
+            let baseFont = NSFont.monospacedSystemFont(ofSize: parent.fontSize, weight: .regular)
             let palette  = SyntaxPalette(nsColors: parent.themePalette, foreground: parent.themeForeground)
             if lang == .markdown {
                 MarkdownHighlighter.apply(to: storage, foreground: parent.themeForeground,
-                                          palette: palette, baseFontSize: Theme.FontSize.sm)
+                                          palette: palette, baseFontSize: parent.fontSize)
             } else {
                 SyntaxHighlighter.apply(to: storage, language: lang, palette: palette, baseFont: baseFont)
             }

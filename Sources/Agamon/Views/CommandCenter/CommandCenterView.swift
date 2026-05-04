@@ -12,6 +12,7 @@ import AppKit
 
 struct CommandCenterView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.uiFontOffset) private var fontOffset
     @State private var query = ""
     @State private var selectedIndex = 0
     @State private var fileItems: [CommandItem] = []
@@ -52,7 +53,7 @@ struct CommandCenterView: View {
                 HStack(spacing: Theme.Spacing.sm) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(Theme.Color.textSecondary)
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: 15 + fontOffset, weight: .medium))
 
                     PaletteTextField(
                         text: $query,
@@ -216,24 +217,25 @@ struct CommandCenterView: View {
 private struct CommandRow: View {
     let item: CommandItem
     let isSelected: Bool
+    @Environment(\.uiFontOffset) private var fontOffset
 
     var body: some View {
         HStack(spacing: Theme.Spacing.sm) {
             Image(systemName: item.icon)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 12 + fontOffset, weight: .medium))
                 .foregroundStyle(isSelected ? Theme.Color.accent : Theme.Color.textSecondary)
                 .frame(width: 18, alignment: .center)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.title)
-                    .font(.system(size: Theme.FontSize.sm))
+                    .font(.system(size: Theme.FontSize.sm + fontOffset))
                     .foregroundStyle(Theme.Color.textPrimary)
                     .lineLimit(1)
 
                 // Show path subtitle for files and projects only (not commands — they use right-aligned shortcut)
                 if let sub = item.subtitle, item.category != .command {
                     Text(sub)
-                        .font(.system(size: Theme.FontSize.xs, design: .monospaced))
+                        .font(.system(size: Theme.FontSize.xs + fontOffset, design: .monospaced))
                         .foregroundStyle(Theme.Color.textTertiary)
                         .lineLimit(1)
                 }
@@ -244,7 +246,7 @@ private struct CommandRow: View {
             // Shortcut badge for commands
             if let sub = item.subtitle, item.category == .command {
                 Text(sub)
-                    .font(.system(size: 11))
+                    .font(.system(size: 11 + fontOffset))
                     .foregroundStyle(Theme.Color.textTertiary)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)

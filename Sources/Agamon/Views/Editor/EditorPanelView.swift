@@ -13,6 +13,7 @@ import SwiftUI
 
 struct EditorPanelView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.uiFontOffset) private var fontOffset
 
     // Per-file content cache — survives tab switches, loaded lazily on first open.
     @State private var fileContents: [URL: String] = [:]
@@ -164,10 +165,10 @@ struct EditorPanelView: View {
         VStack(spacing: Theme.Spacing.sm) {
             Spacer()
             Text("No file open")
-                .font(.system(size: Theme.FontSize.sm))
+                .font(.system(size: Theme.FontSize.sm + fontOffset))
                 .foregroundStyle(Theme.Color.textTertiary)
             Text("Double-click a file in the explorer")
-                .font(.system(size: Theme.FontSize.xs))
+                .font(.system(size: Theme.FontSize.xs + fontOffset))
                 .foregroundStyle(Theme.Color.textTertiary.opacity(0.5))
             Spacer()
         }
@@ -186,6 +187,7 @@ struct EditorTabItem: View {
     let onSelect: () -> Void
     let onClose: () -> Void
 
+    @Environment(\.uiFontOffset) private var fontOffset
     @State private var hovering = false
     private var isDiff: Bool { url.scheme == "agamon-diff" }
 
@@ -193,7 +195,7 @@ struct EditorTabItem: View {
         HStack(spacing: Theme.Spacing.xs) {
             if isDiff {
                 Image(systemName: "plusminus")
-                    .font(.system(size: 8, weight: .medium))
+                    .font(.system(size: 8 + fontOffset, weight: .medium))
                     .foregroundStyle(Theme.Color.textTertiary)
             } else {
                 Circle()
@@ -203,7 +205,7 @@ struct EditorTabItem: View {
             }
 
             Text(url.lastPathComponent)
-                .font(.system(size: Theme.FontSize.xs, design: .monospaced))
+                .font(.system(size: Theme.FontSize.xs + fontOffset, design: .monospaced))
                 .foregroundStyle(isActive ? Theme.Color.textPrimary : Theme.Color.textSecondary)
                 .lineLimit(1)
 

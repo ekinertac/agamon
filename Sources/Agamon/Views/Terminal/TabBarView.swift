@@ -54,6 +54,7 @@ struct TabBarView: View {
 
 struct TabItemView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.uiFontOffset) private var fontOffset
     let tab: WorkTab
     let projectID: UUID
     let isSelected: Bool
@@ -69,14 +70,14 @@ struct TabItemView: View {
                 if isEditing {
                     TextField("", text: $editName)
                         .textFieldStyle(.plain)
-                        .font(.system(size: Theme.FontSize.sm))
+                        .font(.system(size: Theme.FontSize.sm + fontOffset))
                         .foregroundStyle(Theme.Color.textPrimary)
                         .frame(minWidth: 60)
                         .onSubmit { commitRename() }
                         .onExitCommand { isEditing = false }
                 } else {
                     Text(tab.name)
-                        .font(.system(size: Theme.FontSize.sm, weight: isSelected ? .medium : .regular))
+                        .font(.system(size: Theme.FontSize.sm + fontOffset, weight: isSelected ? .medium : .regular))
                         .foregroundStyle(isSelected || isHovered ? Theme.Color.textPrimary : Theme.Color.textSecondary)
                         .lineLimit(1)
                         .onTapGesture(count: 2) { startEdit() }
