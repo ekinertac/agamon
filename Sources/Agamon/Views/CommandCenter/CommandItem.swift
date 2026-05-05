@@ -30,7 +30,7 @@ struct CommandItem: Identifiable {
                 let id = appState.focusedPaneID ?? appState.selectedTab?.rootPane.firstLeafID
                 if let id { appState.splitPane(id, axis: .vertical) }
             },
-            CommandItem(title: "Zoom Pane",          subtitle: "⌘⇧↩",  icon: "arrow.up.left.and.arrow.down.right", category: .command, action: appState.togglePaneZoom),
+            CommandItem(title: appState.editorFocused ? "Zoom Editor" : "Zoom Pane", subtitle: "⌘⇧↩", icon: "arrow.up.left.and.arrow.down.right", category: .command, action: { appState.editorFocused ? appState.toggleEditorZoom() : appState.togglePaneZoom() }),
             CommandItem(title: "Close Pane",         subtitle: "⌘W",   icon: "xmark.rectangle",      category: .command, action: appState.closeCurrentPane),
             CommandItem(title: "Toggle File Panel",  subtitle: "⌘E",   icon: "sidebar.right",         category: .command, action: appState.toggleFilePanel),
             CommandItem(title: "Open Project Folder…", subtitle: "⌘O", icon: "folder.badge.plus",     category: .command, action: appState.openProject),

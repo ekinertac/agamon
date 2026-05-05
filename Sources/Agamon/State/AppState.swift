@@ -61,6 +61,7 @@ final class AppState {
     // Clears zoom so the incoming tab always starts with the full split layout visible.
     private func restoreFocus(for tab: WorkTab) {
         zoomedPaneID = nil
+        editorZoomed = false
         let allLeaves = tab.rootPane.leafIDs()
         let paneID: UUID
         if let remembered = tabFocusMemory[tab.id], allLeaves.contains(remembered) {
@@ -92,7 +93,8 @@ final class AppState {
     var selectedProjectID: UUID?
     var selectedTabID: UUID?
     var focusedPaneID: UUID?
-    var zoomedPaneID: UUID? = nil    // non-nil while a pane is zoomed to fill the container
+    var zoomedPaneID: UUID? = nil    // non-nil while a terminal pane is zoomed to fill the area
+    var editorZoomed: Bool = false   // true while the editor is zoomed to fill the area
     // Persisted per-project: virtual agamon-diff:// URLs are intentionally excluded (ephemeral).
     var openFiles: [URL] = [] {
         didSet {
@@ -412,7 +414,7 @@ final class AppState {
               let ti = projects[pi].tabs.firstIndex(where: { $0.id == tabID })
         else { return }
 
-        zoomedPaneID = nil
+        zoomedPaneID = nil; editorZoomed = false
         terminalViews.removeValue(forKey: paneID)
         TmuxController.shared.killSession(for: paneID)
         attentionPaneIDs.remove(paneID)
@@ -439,7 +441,7 @@ final class AppState {
         else { return }
 
         let paneID = focusedPaneID ?? projects[pi].tabs[ti].rootPane.firstLeafID
-        zoomedPaneID = nil
+        zoomedPaneID = nil; editorZoomed = false
         terminalViews.removeValue(forKey: paneID)
         TmuxController.shared.killSession(for: paneID)
         attentionPaneIDs.remove(paneID)
@@ -464,8 +466,21 @@ final class AppState {
     func togglePaneZoom() {
         if zoomedPaneID != nil {
             zoomedPaneID = nil
+            refocusActiveTerminal()
         } else {
+            editorZoomed = false
             zoomedPaneID = focusedPaneID ?? selectedTab?.rootPane.firstLeafID
+        }
+    }
+
+    func toggleEditorZoom() {
+        if editorZoomed {
+            editorZoomed = false
+            focusEditor()
+        } else {
+            zoomedPaneID = nil
+            editorZoomed = true
+            focusEditor()
         }
     }
 

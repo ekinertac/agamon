@@ -179,9 +179,12 @@ struct AgamonCommands: Commands {
             .keyboardShortcut("d", modifiers: [.command, .shift])
             .disabled(appState?.selectedTab == nil)
 
-            Button("Zoom Pane") { appState?.togglePaneZoom() }
-                .keyboardShortcut(.return, modifiers: [.command, .shift])
-                .disabled(appState?.selectedTab == nil)
+            Button("Zoom Pane") {
+                if appState?.editorFocused == true { appState?.toggleEditorZoom() }
+                else { appState?.togglePaneZoom() }
+            }
+            .keyboardShortcut(.return, modifiers: [.command, .shift])
+            .disabled(appState?.selectedTab == nil && appState?.editorFocused != true)
 
             Divider()
 

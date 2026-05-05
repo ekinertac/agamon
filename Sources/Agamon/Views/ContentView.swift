@@ -26,32 +26,37 @@ struct ContentView: View {
                 divider
             }
 
-            // Column 2: terminal tabs + split panes
-            VStack(spacing: 0) {
-                if let project = appState.selectedProject {
-                    TabBarView(project: project)
-                    hDivider
-                    terminalArea
-                } else {
-                    WelcomeView()
+            // Column 2: terminal tabs + split panes — hidden when editor is zoomed.
+            if !appState.editorZoomed {
+                VStack(spacing: 0) {
+                    if let project = appState.selectedProject {
+                        TabBarView(project: project)
+                        hDivider
+                        terminalArea
+                    } else {
+                        WelcomeView()
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.move(edge: .leading).combined(with: .opacity))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Column 3: text editor — hidden during pane zoom so the terminal fills the full area.
+            // Column 3: text editor — hidden during pane zoom; fills full area during editor zoom.
             if appState.editorPanelVisible && appState.zoomedPaneID == nil {
-                ResizeDivider {
-                    appState.editorPanelWidth = max(Theme.EditorPanel.minWidth, editorPanelBaseWidth - $0)
-                } onEnd: {
-                    editorPanelBaseWidth = appState.editorPanelWidth
+                if !appState.editorZoomed {
+                    ResizeDivider {
+                        appState.editorPanelWidth = max(Theme.EditorPanel.minWidth, editorPanelBaseWidth - $0)
+                    } onEnd: {
+                        editorPanelBaseWidth = appState.editorPanelWidth
+                    }
                 }
                 EditorPanelView()
-                    .frame(width: appState.editorPanelWidth)
+                    .frame(maxWidth: appState.editorZoomed ? .infinity : appState.editorPanelWidth)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
 
-            // Column 4: file explorer — hidden during pane zoom.
-            if appState.filePanelVisible && appState.zoomedPaneID == nil {
+            // Column 4: file explorer — hidden during pane zoom and editor zoom.
+            if appState.filePanelVisible && appState.zoomedPaneID == nil && !appState.editorZoomed {
                 ResizeDivider {
                     filePanelWidth = max(Theme.FilePanel.minWidth, filePanelBaseWidth - $0)
                 } onEnd: {
@@ -76,6 +81,7 @@ struct ContentView: View {
         .animation(.easeOut(duration: 0.12), value: appState.commandCenterVisible)
         .animation(.easeOut(duration: 0.15), value: appState.sidebarVisible)
         .animation(.easeOut(duration: 0.18), value: appState.zoomedPaneID == nil)
+        .animation(.easeOut(duration: 0.18), value: appState.editorZoomed)
     }
 
     // ALL projects' tabs are kept in the hierarchy simultaneously — only the active one is visible.

@@ -105,8 +105,8 @@ struct ShortcutHandler: View {
             Button("", action: appState.openCommandCenter)
                 .keyboardShortcut("p", modifiers: .command)
 
-            // Zoom focused pane to fill the container, or restore the split layout
-            Button("", action: appState.togglePaneZoom)
+            // Zoom: context-aware — editor zoom when editor is focused, pane zoom otherwise.
+            Button("") { appState.editorFocused ? appState.toggleEditorZoom() : appState.togglePaneZoom() }
                 .keyboardShortcut(.return, modifiers: [.command, .shift])
 
             // Terminal / editor font size (context-aware: targets editor when focused, terminal otherwise)
