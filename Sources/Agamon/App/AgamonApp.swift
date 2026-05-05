@@ -16,7 +16,7 @@ import SwiftUI
 import AppKit
 import Sparkle
 
-let agamonVersion = "0.3.1"
+let agamonVersion = "0.3.2"
 
 @main
 struct AgamonApp: App {
