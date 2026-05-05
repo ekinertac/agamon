@@ -38,8 +38,8 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Column 3: text editor (shown when a file is open)
-            if appState.editorPanelVisible {
+            // Column 3: text editor — hidden during pane zoom so the terminal fills the full area.
+            if appState.editorPanelVisible && appState.zoomedPaneID == nil {
                 ResizeDivider {
                     appState.editorPanelWidth = max(Theme.EditorPanel.minWidth, editorPanelBaseWidth - $0)
                 } onEnd: {
@@ -50,8 +50,8 @@ struct ContentView: View {
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
 
-            // Column 4: file explorer
-            if appState.filePanelVisible {
+            // Column 4: file explorer — hidden during pane zoom.
+            if appState.filePanelVisible && appState.zoomedPaneID == nil {
                 ResizeDivider {
                     filePanelWidth = max(Theme.FilePanel.minWidth, filePanelBaseWidth - $0)
                 } onEnd: {
@@ -75,6 +75,7 @@ struct ContentView: View {
         }
         .animation(.easeOut(duration: 0.12), value: appState.commandCenterVisible)
         .animation(.easeOut(duration: 0.15), value: appState.sidebarVisible)
+        .animation(.easeOut(duration: 0.18), value: appState.zoomedPaneID == nil)
     }
 
     // ALL projects' tabs are kept in the hierarchy simultaneously — only the active one is visible.

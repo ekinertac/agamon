@@ -86,13 +86,15 @@ struct TerminalPaneView: View {
                     .animation(.easeInOut(duration: 0.2), value: appState.attentionPaneIDs.contains(paneID))
             }
 
-            // Zoom indicator — top-right badge when this pane is zoomed and siblings exist.
+            // Zoom indicator — top-right badge when this pane is zoomed and content is hidden.
+            // Counts both sibling terminal panes and any editor/file panels that slid away.
             let siblingCount = (appState.selectedTab?.rootPane.leafIDs().count ?? 1) - 1
-            if appState.zoomedPaneID == paneID && siblingCount > 0 {
+            let hiddenPanelCount = (appState.editorPanelVisible ? 1 : 0) + (appState.filePanelVisible ? 1 : 0)
+            if appState.zoomedPaneID == paneID && (siblingCount + hiddenPanelCount) > 0 {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         Spacer()
-                        ZoomIndicatorBadge(hiddenCount: siblingCount) {
+                        ZoomIndicatorBadge(hiddenCount: siblingCount + hiddenPanelCount) {
                             appState.togglePaneZoom()
                         }
                         .padding(.top, Theme.Spacing.sm)
