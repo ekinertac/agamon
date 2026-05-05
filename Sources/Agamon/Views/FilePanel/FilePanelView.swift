@@ -44,6 +44,15 @@ struct FilePanelView: View {
             }
         }
         .background(Theme.Color.surface)
+        .overlay(alignment: .leading) {
+            if appState.filePanelFocused {
+                Rectangle()
+                    .fill(Theme.Color.accent.opacity(0.6))
+                    .frame(width: 1.5)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.12), value: appState.filePanelFocused)
         .onChange(of: appState.filePanelFocused) { _, new in
             if new { treeFocused = true }
         }

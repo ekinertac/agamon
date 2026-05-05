@@ -41,6 +41,15 @@ struct SidebarView: View {
             footer
         }
         .background(Theme.Color.surface)
+        .overlay(alignment: .trailing) {
+            if appState.sidebarFocused {
+                Rectangle()
+                    .fill(Theme.Color.accent.opacity(0.6))
+                    .frame(width: 1.5)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.12), value: appState.sidebarFocused)
         // Respond to focusSidebar() by grabbing keyboard focus on the project list.
         .onChange(of: appState.sidebarFocusRequestID) { listFocused = true }
         // Keep sidebarFocused in sync when SwiftUI focus leaves this view.
