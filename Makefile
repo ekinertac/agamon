@@ -64,8 +64,8 @@ SIGNING_IDENTITY ?= -
 _sign:
 	@if [ -d "$(APP)/Contents/Frameworks/Sparkle.framework" ]; then \
 		find "$(APP)/Contents/Frameworks/Sparkle.framework" \
-			\( -name "*.xpc" -o -name "*.app" \) -print0 \
-			| sort -rz \
+			\( -name "*.xpc" -o -name "*.app" -o -name "Autoupdate" -o -name "fileop" \) \
+			-print0 | sort -rz \
 			| xargs -0 -I{} codesign --force --sign "$(SIGNING_IDENTITY)" \
 				--options runtime --preserve-metadata=entitlements {}; \
 		codesign --force --sign "$(SIGNING_IDENTITY)" --options runtime \
