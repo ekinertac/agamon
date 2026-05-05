@@ -37,7 +37,9 @@ struct AgamonApp: App {
         .commands {
             AgamonCommands()
             CommandGroup(after: .appInfo) {
-                CheckForUpdatesView(updater: updaterController.updater)
+                Button("Check for Updates…") {
+                    updaterController.updater.checkForUpdates()
+                }
             }
         }
 
