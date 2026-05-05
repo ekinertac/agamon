@@ -649,6 +649,12 @@ final class AppState {
     // MARK: - Pane Navigation
 
     func focusPane(direction: PaneNavigationDirection) {
+        // Editor navigation is handled entirely by the NSEvent monitor (which has the
+        // necessary first-responder context). Letting focusPane run while the editor is
+        // focused would cause ⌘⌥↑/↓ to steal focus from the editor into the terminal grid,
+        // and ⌘⌥← at the left edge would incorrectly jump to the sidebar.
+        if editorFocused { return }
+
         // Sidebar has logical focus → ⌘⌥→ exits to the terminal grid.
         if sidebarFocused {
             if direction == .right { refocusActiveTerminal() }
