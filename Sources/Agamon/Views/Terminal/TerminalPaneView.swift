@@ -318,7 +318,9 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
             } else {
                 (exec, args) = (shellPath, [])
             }
-            tv.startProcess(executable: exec, args: args, environment: nil, execName: nil,
+            let env = Terminal.getEnvironmentVariables(termName: "xterm-256color")
+                + ["TERM_PROGRAM=Agamon"]
+            tv.startProcess(executable: exec, args: args, environment: env, execName: nil,
                             currentDirectory: rootPath)
             if tv.shouldAutoFocus {
                 DispatchQueue.main.async { tv.window?.makeFirstResponder(tv) }

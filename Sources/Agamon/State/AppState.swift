@@ -921,6 +921,24 @@ final class AppState {
             }
         }
 
+        // Shift+Return while a terminal is focused → send CSI 13;2u (kitty keyboard protocol).
+        // SwiftTerm sends \r for both Return and Shift+Return; intercepting here gives the
+        // process a distinct sequence so shells with the Agamon binding can insert a literal
+        // newline without submitting the prompt (e.g. for Claude Code multi-line input).
+        // Shell config needed once: bindkey '\e[13;2u' self-insert  (zsh)
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window == self.hostWindow else { return event }
+            guard NSApp.keyWindow?.firstResponder is AgamonTerminalView else { return event }
+            guard event.keyCode == 0x24, // Return
+                  event.modifierFlags.contains(.shift),
+                  !event.modifierFlags.contains(.command),
+                  !event.modifierFlags.contains(.option),
+                  !event.modifierFlags.contains(.control) else { return event }
+            guard let tv = self.focusedPaneID.flatMap({ self.terminalViews[$0] }) else { return event }
+            tv.send(txt: "\u{1b}[13;2u")
+            return nil
+        }
+
         // Listen for BEL signals from terminals. Only record attention when the pane
         // is not already the focused one — no need to alert the user if they're watching.
         NotificationCenter.default.addObserver(
