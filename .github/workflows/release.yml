@@ -92,11 +92,23 @@ jobs:
           APP_PASS:    ${{ secrets.NOTARY_APP_PASSWORD }}
           TEAM_ID:     ${{ secrets.NOTARY_TEAM_ID }}
         run: |
-          xcrun notarytool submit "Agamon-${{ env.RELEASE_NAME }}.zip" \
+          RESULT=$(xcrun notarytool submit "Agamon-${{ env.RELEASE_NAME }}.zip" \
             --apple-id  "$APPLE_ID" \
             --password  "$APP_PASS" \
             --team-id   "$TEAM_ID" \
-            --wait
+            --wait \
+            --output-format json)
+          echo "$RESULT"
+          STATUS=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+          ID=$(echo "$RESULT"     | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "--- Apple notarization log ---"
+            xcrun notarytool log "$ID" \
+              --apple-id "$APPLE_ID" \
+              --password "$APP_PASS" \
+              --team-id  "$TEAM_ID"
+            exit 1
+          fi
           xcrun stapler staple Agamon.app
 
       - name: Re-zip stapled app
