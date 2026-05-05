@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sparkle 2 appcast — hosted at:
+     https://raw.githubusercontent.com/ekinertac/agamon/main/appcast.xml
+     Updated automatically by .github/workflows/release.yml on each tagged release.
+     To add an entry manually: scripts/update_appcast.sh VERSION BUILD URL SIZE ED_SIG -->
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Agamon Changelog</title>
+    <link>https://github.com/ekinertac/agamon</link>
+    <description>Most recent changes with links to updates.</description>
+    <language>en</language>
+  </channel>
+</rss>

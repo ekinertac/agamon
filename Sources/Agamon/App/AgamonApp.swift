@@ -7,10 +7,14 @@
 // Each window owns its AppState via WindowContainerView — projects, tabs, and focus are
 // fully independent per window. settingsAppState is a dedicated instance for the Settings
 // panel; changes persist to UserDefaults and are picked up by new windows on init.
-// Related: ContentView.swift (root layout), AppState.swift (shared state).
+//
+// Auto-update: SPUStandardUpdaterController (Sparkle 2) lives on AgamonApp so its lifetime
+// matches the process. SUFeedURL and SUPublicEDKey are declared in packaging/Info.plist.
+// Related: ContentView.swift (root layout), AppState.swift (shared state), appcast.xml.
 
 import SwiftUI
 import AppKit
+import Sparkle
 
 let agamonVersion = "0.3.1"
 
@@ -19,6 +23,10 @@ struct AgamonApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     // Dedicated AppState for the Settings panel — not tied to any window.
     @State private var settingsAppState = AppState()
+    // Sparkle 2 updater — lifetime matches the process. startingUpdater:true begins
+    // background update checks immediately per SUAutomaticallyUpdate / SUScheduledCheckInterval.
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     var body: some Scene {
         WindowGroup(id: "main") {
@@ -28,6 +36,9 @@ struct AgamonApp: App {
         .defaultSize(width: 1280, height: 800)
         .commands {
             AgamonCommands()
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(updater: updaterController.updater)
+            }
         }
 
         Settings {
