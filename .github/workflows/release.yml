@@ -151,7 +151,7 @@ jobs:
           git add appcast.xml
           git diff --cached --quiet && echo "No appcast changes" && exit 0
           git commit -m "Update appcast for ${{ env.RELEASE_NAME }}"
-          git push origin HEAD:main
+          git push origin HEAD:refs/heads/master
 
       - name: Clean up keychain
         if: always()
