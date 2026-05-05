@@ -26,36 +26,44 @@ struct ContentView: View {
                 divider
             }
 
-            // Column 2: terminal tabs + split panes — hidden when editor is zoomed.
-            if !appState.editorZoomed {
-                VStack(spacing: 0) {
-                    if let project = appState.selectedProject {
-                        TabBarView(project: project)
-                        hDivider
-                        terminalArea
-                    } else {
-                        WelcomeView()
-                    }
+            // Column 2: terminal tabs + split panes.
+            // NEVER conditionally removed — using if-removal triggers viewDidMoveToWindow on
+            // every AgamonTerminalView, resetting lastLayoutSize and firing TIOCSWINSZ for all
+            // terminals. opacity(0) keeps NSViews in their hosting view so no re-parenting occurs.
+            // The expanded editor is overlaid on top of this column when editorZoomed.
+            VStack(spacing: 0) {
+                if let project = appState.selectedProject {
+                    TabBarView(project: project)
+                    hDivider
+                    terminalArea
+                } else {
+                    WelcomeView()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .transition(.move(edge: .leading).combined(with: .opacity))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .opacity(appState.editorZoomed ? 0 : 1)
+            .allowsHitTesting(!appState.editorZoomed)
+            .overlay {
+                // Editor zoom: fills Column 2's full frame (which equals total area minus sidebar).
+                if appState.editorZoomed && appState.editorPanelVisible {
+                    EditorPanelView()
+                        .transition(.opacity)
+                }
             }
 
-            // Column 3: text editor — hidden during pane zoom; fills full area during editor zoom.
-            if appState.editorPanelVisible && appState.zoomedPaneID == nil {
-                if !appState.editorZoomed {
-                    ResizeDivider {
-                        appState.editorPanelWidth = max(Theme.EditorPanel.minWidth, editorPanelBaseWidth - $0)
-                    } onEnd: {
-                        editorPanelBaseWidth = appState.editorPanelWidth
-                    }
+            // Column 3: text editor in its normal fixed-width position (not zoomed).
+            if appState.editorPanelVisible && appState.zoomedPaneID == nil && !appState.editorZoomed {
+                ResizeDivider {
+                    appState.editorPanelWidth = max(Theme.EditorPanel.minWidth, editorPanelBaseWidth - $0)
+                } onEnd: {
+                    editorPanelBaseWidth = appState.editorPanelWidth
                 }
                 EditorPanelView()
-                    .frame(maxWidth: appState.editorZoomed ? .infinity : appState.editorPanelWidth)
+                    .frame(width: appState.editorPanelWidth)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
 
-            // Column 4: file explorer — hidden during pane zoom and editor zoom.
+            // Column 4: file explorer — hidden during any zoom.
             if appState.filePanelVisible && appState.zoomedPaneID == nil && !appState.editorZoomed {
                 ResizeDivider {
                     filePanelWidth = max(Theme.FilePanel.minWidth, filePanelBaseWidth - $0)
