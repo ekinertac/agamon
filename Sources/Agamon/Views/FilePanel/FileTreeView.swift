@@ -405,7 +405,7 @@ struct FileItem: Identifiable {
         guard let contents = try? FileManager.default.contentsOfDirectory(
             at: url,
             includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
+            options: []
         ) else { return [] }
 
         return contents

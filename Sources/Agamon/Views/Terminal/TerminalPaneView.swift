@@ -161,6 +161,14 @@ struct TerminalPaneView: View {
 
 // Subclass to start the process on first layout with a real frame, and to receive
 // agamonFocusTerminal notifications for programmatic first-responder restoration.
+//
+// Scroll lock: SwiftTerm auto-scrolls to the bottom on every new output line.
+// We suppress this when the user has manually scrolled up, by intercepting the
+// terminal engine's scrolled(source:yDisp:) callback and snapping back to the
+// saved row. scrollTo(row:) is the single tracking point for all user-initiated
+// scrolling (wheel, page keys). The two delegate protocols (TerminalDelegate vs
+// TerminalViewDelegate) are distinct, so calling scrollTo from inside scrolled
+// does not recurse.
 final class AgamonTerminalView: LocalProcessTerminalView {
     var shellLaunch: (() -> Void)?
     var paneID: UUID?
@@ -172,6 +180,10 @@ final class AgamonTerminalView: LocalProcessTerminalView {
     // Last size sent to SwiftTerm via super.layout(). Guards against TIOCSWINSZ(0,0)
     // during re-parenting transitions and suppresses same-size repeat calls.
     private var lastLayoutSize: CGSize = .zero
+
+    // Scroll lock state — true while the user is scrolled above the live bottom.
+    private var userScrolledUp = false
+    private var savedScrollRow: Double = 0
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -236,6 +248,28 @@ final class AgamonTerminalView: LocalProcessTerminalView {
         didLaunch = true
         DispatchQueue.main.async { [weak self] in
             self?.shellLaunch?()
+        }
+    }
+
+    // TerminalViewDelegate — called for all scroll position changes (user and auto-scroll).
+    // Tracks whether the user is scrolled above the live bottom of the output.
+    override func scrolled(source: TerminalView, position: Double) {
+        super.scrolled(source: source, position: position)
+        if position >= 1.0 {
+            userScrolledUp = false
+        } else {
+            userScrolledUp = true
+            savedScrollRow = position
+        }
+    }
+
+    // TerminalDelegate — called only by the terminal engine when new output causes an auto-scroll.
+    // Distinct from TerminalViewDelegate.scrolled — calling scroll(toPosition:) here does not
+    // recurse into this override. If the user is scrolled up, snap back after super runs.
+    override func scrolled(source: SwiftTerm.Terminal, yDisp: Int) {
+        super.scrolled(source: source, yDisp: yDisp)
+        if userScrolledUp && scrollPosition >= 1.0 {
+            scroll(toPosition: savedScrollRow)
         }
     }
 }
