@@ -53,6 +53,10 @@ struct AgamonApp: App {
 // startModifierMonitor() is called for every window; each monitor gates itself on
 // event.window == hostWindow so modifier hints, click focus, and keyboard shortcuts
 // are always scoped to the correct window and never bleed into inactive windows.
+//
+// hostWindow is set via WindowAnchorView (an NSViewRepresentable) rather than
+// NSApp.keyWindow in onAppear — the latter can be nil or stale at the time onAppear
+// fires, which would make every monitor guard silently fail.
 struct WindowContainerView: View {
     @State private var appState = AppState()
     private static var primaryWindowClaimed = false
@@ -60,15 +64,36 @@ struct WindowContainerView: View {
     var body: some View {
         ContentView()
             .environment(appState)
-            .onAppear {
-                appState.hostWindow = NSApp.keyWindow
-                appState.startModifierMonitor()
-                if !WindowContainerView.primaryWindowClaimed {
-                    WindowContainerView.primaryWindowClaimed = true
-                    appState.load()
+            .background(
+                WindowAnchorView { [weak appState] window in
+                    guard let appState else { return }
+                    appState.hostWindow = window
+                    appState.startModifierMonitor()
+                    if !WindowContainerView.primaryWindowClaimed {
+                        WindowContainerView.primaryWindowClaimed = true
+                        appState.load()
+                    }
                 }
-            }
+                .frame(width: 0, height: 0)
+            )
     }
+}
+
+// Zero-size AppKit view whose sole job is to reliably capture the NSWindow it
+// belongs to. view.window is always correct once the view is in the hierarchy;
+// NSApp.keyWindow at onAppear time can be nil if the window hasn't been made key yet.
+private struct WindowAnchorView: NSViewRepresentable {
+    let onWindow: (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window { onWindow(window) }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 // Sets .regular activation policy so the app appears in Dock and App Switcher.
