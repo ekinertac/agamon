@@ -47,10 +47,15 @@ final class TmuxController {
 
     private func writeConfig() {
         // Written fresh each launch so config stays in sync with app expectations.
+        // allow-passthrough on: inner programs (Claude Code, etc.) can send OSC escape
+        // sequences through tmux to SwiftTerm — needed for OSC 52 clipboard, OSC 8
+        // hyperlinks, inline images, and OSC 0/2 title updates. Without it tmux strips
+        // those sequences and the features silently break.
         let conf = """
         set -g status off
         set -g default-terminal "xterm-256color"
         set -g escape-time 10
+        set -g allow-passthrough on
         """
         try? conf.write(toFile: configPath, atomically: true, encoding: .utf8)
     }

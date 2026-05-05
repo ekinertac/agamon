@@ -178,6 +178,8 @@ final class AgamonTerminalView: LocalProcessTerminalView {
     // Set to true in makeNSView when this pane is the focused one at creation time.
     // On first layout the shell starts and we immediately grab AppKit first-responder.
     var shouldAutoFocus: Bool = false
+    // Weak reference used in layout() to detect pane-zoom state without re-parenting.
+    weak var appState: AppState?
     private var didLaunch = false
     // Last size sent to SwiftTerm via super.layout(). Guards against TIOCSWINSZ(0,0)
     // during re-parenting transitions and suppresses same-size repeat calls.
@@ -244,6 +246,13 @@ final class AgamonTerminalView: LocalProcessTerminalView {
         // Guard before super.layout() — a zero-size call during re-parenting sends
         // TIOCSWINSZ(0,0) which resets the tmux session. Same-size calls are no-ops.
         guard newSize.width > 0, newSize.height > 0, newSize != lastLayoutSize else { return }
+        // During pane zoom, Col 2 expands so the zoomed pane fills the full panel area.
+        // Only the zoomed pane should receive TIOCSWINSZ — all others are opacity-hidden
+        // and must not be resized. By NOT updating lastLayoutSize here, the unzoom path
+        // sees size == lastLayoutSize and suppresses TIOCSWINSZ there too.
+        if let zoomedID = appState?.zoomedPaneID, let myID = paneID, zoomedID != myID {
+            return
+        }
         lastLayoutSize = newSize
         super.layout()
         guard !didLaunch else { return }
@@ -297,6 +306,7 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
         // NSHostingView so the new one gets a clean slate and doesn't fight stale constraints.
         if let cached = appState.terminalViews[paneID] {
             cached.removeFromSuperview()
+            cached.appState = appState
             cached.processDelegate = context.coordinator
             context.coordinator.onProcessTerminated = closeHandler(for: paneID)
             return cached
@@ -304,6 +314,7 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
 
         let tv = AgamonTerminalView(frame: .zero)
         tv.paneID = paneID
+        tv.appState = appState
         tv.shouldAutoFocus = isActive
         tv.processDelegate = context.coordinator
         context.coordinator.onProcessTerminated = closeHandler(for: paneID)
@@ -321,6 +332,7 @@ struct TerminalNSViewWrapper: NSViewRepresentable {
                 (exec, args) = (shellPath, [])
             }
             let env = Terminal.getEnvironmentVariables(termName: "xterm-256color")
+                .filter { !$0.hasPrefix("TERM_PROGRAM=") }
                 + ["TERM_PROGRAM=Agamon"]
             tv.startProcess(executable: exec, args: args, environment: env, execName: nil,
                             currentDirectory: rootPath)

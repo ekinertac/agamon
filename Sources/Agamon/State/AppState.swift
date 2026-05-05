@@ -846,7 +846,7 @@ final class AppState {
             // Cmd+1…9 while a terminal has focus → select terminal tab, consume event.
             // ShortcutHandler's .keyboardShortcut() buttons don't fire when an AppKit view
             // holds keyboard focus, so the shortcut must be intercepted here.
-            if NSApp.keyWindow?.firstResponder is AgamonTerminalView, mods == .command,
+            if event.window?.firstResponder is AgamonTerminalView, mods == .command,
                let char = event.characters, char.count == 1,
                let n = Int(char), (1...9).contains(n) {
                 self.selectTab(at: n - 1)
@@ -901,7 +901,7 @@ final class AppState {
         // Passes through for intra-grid moves so ShortcutHandler's focusPane handles them.
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window == self.hostWindow else { return event }
-            guard NSApp.keyWindow?.firstResponder is AgamonTerminalView else { return event }
+            guard event.window?.firstResponder is AgamonTerminalView else { return event }
             let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
             guard mods == [.command, .option] else { return event }
             guard let tab = self.selectedTab else { return event }
@@ -926,7 +926,7 @@ final class AppState {
         // Intercept here (before the event reaches SwiftTerm) and send the correct bytes.
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window == self.hostWindow else { return event }
-            guard NSApp.keyWindow?.firstResponder is AgamonTerminalView else { return event }
+            guard event.window?.firstResponder is AgamonTerminalView else { return event }
             guard event.modifierFlags.intersection([.shift, .control, .option, .command]).isEmpty else { return event }
             guard let tv = self.focusedPaneID.flatMap({ self.terminalViews[$0] }) else { return event }
             switch event.keyCode {
@@ -936,21 +936,24 @@ final class AppState {
             }
         }
 
-        // Shift+Return while a terminal is focused → send CSI 13;2u (kitty keyboard protocol).
-        // SwiftTerm sends \r for both Return and Shift+Return; intercepting here gives the
-        // process a distinct sequence so shells with the Agamon binding can insert a literal
-        // newline without submitting the prompt (e.g. for Claude Code multi-line input).
-        // Shell config needed once: bindkey '\e[13;2u' self-insert  (zsh)
+        // Shift+Return → send LF (\n) instead of CR (\r). TUIs that distinguish the two
+        // (Claude Code, nano, micro) treat CR as "submit" and LF as "insert newline within
+        // the current input", giving multi-line entry without breaking submit-on-Enter.
+        // Same convention `claude /terminal-setup` writes into iTerm2's keymap.
+        // zsh/bash accept-line treats both bytes identically, so plain shells are unaffected.
+        //
+        // Done via local monitor (not a keyDown override) because SwiftTerm's keyDown is
+        // public-but-non-open — can't be overridden from outside the SwiftTerm module.
+        // Mirrors the Home/End handler's guard pattern: gate on focused window + an
+        // AgamonTerminalView firstResponder + the focused pane mapping.
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window == self.hostWindow else { return event }
-            guard NSApp.keyWindow?.firstResponder is AgamonTerminalView else { return event }
-            guard event.keyCode == 0x24, // Return
-                  event.modifierFlags.contains(.shift),
-                  !event.modifierFlags.contains(.command),
-                  !event.modifierFlags.contains(.option),
-                  !event.modifierFlags.contains(.control) else { return event }
+            guard event.window?.firstResponder is AgamonTerminalView else { return event }
+            guard event.keyCode == 0x24,
+                  event.modifierFlags.intersection([.shift, .control, .option, .command]) == .shift
+            else { return event }
             guard let tv = self.focusedPaneID.flatMap({ self.terminalViews[$0] }) else { return event }
-            tv.send(txt: "\u{1b}[13;2u")
+            tv.send(txt: "\n")
             return nil
         }
 

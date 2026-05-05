@@ -2,6 +2,9 @@
 // Columns 3 and 4 are independently collapsible. The editor (column 3) auto-opens when
 // a file is double-clicked in the explorer; the explorer (column 4) is toggled with ⌘E.
 // Uses a manual HStack rather than NavigationSplitView for full control over widths and chrome.
+// Cols 2–4 are wrapped in a sub-HStack so editor-zoom overlay covers exactly that region
+// (sidebar excluded). Same-size spacers replace cols 3/4 during editor zoom so Col 2's
+// frame never changes — preventing TIOCSWINSZ on all terminals.
 // Related: SidebarView.swift, SplitContainerView.swift, EditorPanelView.swift,
 //          FilePanelView.swift, AppState.swift (drives visibility and selection).
 
@@ -26,53 +29,70 @@ struct ContentView: View {
                 divider
             }
 
-            // Column 2: terminal tabs + split panes.
-            // NEVER conditionally removed — using if-removal triggers viewDidMoveToWindow on
-            // every AgamonTerminalView, resetting lastLayoutSize and firing TIOCSWINSZ for all
-            // terminals. opacity(0) keeps NSViews in their hosting view so no re-parenting occurs.
-            // The expanded editor is overlaid on top of this column when editorZoomed.
-            VStack(spacing: 0) {
-                if let project = appState.selectedProject {
-                    TabBarView(project: project)
-                    hDivider
-                    terminalArea
-                } else {
-                    WelcomeView()
+            // Columns 2–4 sub-container so the editor-zoom overlay covers exactly this
+            // region (sidebar excluded). Cols 3 and 4 become same-size Color.clear spacers
+            // when editorZoomed so Col 2's frame is unchanged — no TIOCSWINSZ triggered.
+            HStack(spacing: 0) {
+                // Column 2: terminal tabs + split panes.
+                // NEVER conditionally removed — using if-removal triggers viewDidMoveToWindow on
+                // every AgamonTerminalView, resetting lastLayoutSize and firing TIOCSWINSZ for all
+                // terminals. opacity(0) keeps NSViews in their hosting view so no re-parenting occurs.
+                VStack(spacing: 0) {
+                    if let project = appState.selectedProject {
+                        TabBarView(project: project)
+                        hDivider
+                        terminalArea
+                    } else {
+                        WelcomeView()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .opacity(appState.editorZoomed ? 0 : 1)
+                .allowsHitTesting(!appState.editorZoomed)
+
+                // Column 3: editor panel in normal position, or a same-size spacer during
+                // editor zoom so HStack geometry (and Col 2 width) is unchanged.
+                if appState.editorPanelVisible && appState.zoomedPaneID == nil {
+                    if appState.editorZoomed {
+                        divider
+                        Color.clear
+                            .frame(width: appState.editorPanelWidth)
+                    } else {
+                        ResizeDivider {
+                            appState.editorPanelWidth = max(Theme.EditorPanel.minWidth, editorPanelBaseWidth - $0)
+                        } onEnd: {
+                            editorPanelBaseWidth = appState.editorPanelWidth
+                        }
+                        EditorPanelView()
+                            .frame(width: appState.editorPanelWidth)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
+                }
+
+                // Column 4: file explorer — same-size spacer during editor zoom.
+                if appState.filePanelVisible && appState.zoomedPaneID == nil {
+                    if appState.editorZoomed {
+                        divider
+                        Color.clear
+                            .frame(width: filePanelWidth)
+                    } else {
+                        ResizeDivider {
+                            filePanelWidth = max(Theme.FilePanel.minWidth, filePanelBaseWidth - $0)
+                        } onEnd: {
+                            filePanelBaseWidth = filePanelWidth
+                        }
+                        FilePanelView()
+                            .frame(width: filePanelWidth)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .opacity(appState.editorZoomed ? 0 : 1)
-            .allowsHitTesting(!appState.editorZoomed)
             .overlay {
-                // Editor zoom: fills Column 2's full frame (which equals total area minus sidebar).
+                // Editor zoom: covers cols 2–4 (sidebar excluded) at full available size.
                 if appState.editorZoomed && appState.editorPanelVisible {
                     EditorPanelView()
                         .transition(.opacity)
                 }
-            }
-
-            // Column 3: text editor in its normal fixed-width position (not zoomed).
-            if appState.editorPanelVisible && appState.zoomedPaneID == nil && !appState.editorZoomed {
-                ResizeDivider {
-                    appState.editorPanelWidth = max(Theme.EditorPanel.minWidth, editorPanelBaseWidth - $0)
-                } onEnd: {
-                    editorPanelBaseWidth = appState.editorPanelWidth
-                }
-                EditorPanelView()
-                    .frame(width: appState.editorPanelWidth)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-
-            // Column 4: file explorer — hidden during any zoom.
-            if appState.filePanelVisible && appState.zoomedPaneID == nil && !appState.editorZoomed {
-                ResizeDivider {
-                    filePanelWidth = max(Theme.FilePanel.minWidth, filePanelBaseWidth - $0)
-                } onEnd: {
-                    filePanelBaseWidth = filePanelWidth
-                }
-                FilePanelView()
-                    .frame(width: filePanelWidth)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .environment(\.uiFontOffset, appState.uiFontSizeOffset)
