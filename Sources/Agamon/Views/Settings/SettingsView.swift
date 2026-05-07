@@ -23,7 +23,6 @@ struct SettingsView: View {
                 .tabItem { Label("Shortcuts", systemImage: "keyboard") }
         }
         .frame(minWidth: 480, minHeight: 680)
-        .preferredColorScheme(.dark)
     }
 }
 

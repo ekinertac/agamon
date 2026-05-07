@@ -37,8 +37,14 @@ struct FileEditorView: View {
                 fontSize: appState.editorFontSize,
                 lineWrap: appState.editorLineWrap,
                 themePalette: activeTheme?.rawPalette ?? [],
-                themeForeground: activeTheme?.foreground ?? NSColor(white: 0.85, alpha: 1),
-                themeBackground: activeTheme?.background ?? NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1),
+                themeForeground: activeTheme?.foreground ?? NSColor(name: nil) { app in
+                    app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                        ? NSColor(white: 0.85, alpha: 1) : NSColor(white: 0.15, alpha: 1)
+                },
+                themeBackground: activeTheme?.background ?? NSColor(name: nil) { app in
+                    app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                        ? NSColor(r: 26, g: 26, b: 26) : NSColor(r: 248, g: 248, b: 248)
+                },
                 onFocusChange: { focused in appState.editorFocused = focused },
                 onCursorChange: { line, col in cursorLine = line; cursorCol = col }
             )
@@ -323,10 +329,13 @@ final class LineNumberRulerView: NSRulerView {
         let size = max(9, (textView?.font?.pointSize ?? Theme.FontSize.sm) - 2.5)
         return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
     }
-    private let dimColor:    NSColor = NSColor(white: 0.32, alpha: 1)
-    private let activeColor: NSColor = NSColor(white: 0.60, alpha: 1)
-    private let bgColor:     NSColor = NSColor(white: 0.10, alpha: 1)
-    private let borderColor: NSColor = NSColor(white: 0.18, alpha: 1)
+    // Computed so they re-resolve on every draw call, picking the correct value
+    // for the current effective appearance without any extra observer wiring.
+    private var isDark:      Bool    { effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua }
+    private var dimColor:    NSColor { isDark ? NSColor(white: 0.32, alpha: 1) : NSColor(white: 0.58, alpha: 1) }
+    private var activeColor: NSColor { isDark ? NSColor(white: 0.60, alpha: 1) : NSColor(white: 0.20, alpha: 1) }
+    private var bgColor:     NSColor { isDark ? NSColor(white: 0.10, alpha: 1) : NSColor(white: 0.93, alpha: 1) }
+    private var borderColor: NSColor { isDark ? NSColor(white: 0.18, alpha: 1) : NSColor(white: 0.78, alpha: 1) }
 
     init(textView: NSTextView, scrollView: NSScrollView) {
         self.textView = textView
@@ -427,8 +436,14 @@ struct EditorTextView: NSViewRepresentable {
     var fontSize: CGFloat = Theme.FontSize.sm
     var lineWrap: Bool = true
     var themePalette: [NSColor] = []
-    var themeForeground: NSColor = NSColor(white: 0.85, alpha: 1)
-    var themeBackground: NSColor = NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1)
+    var themeForeground: NSColor = NSColor(name: nil) { app in
+        app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(white: 0.85, alpha: 1) : NSColor(white: 0.15, alpha: 1)
+    }
+    var themeBackground: NSColor = NSColor(name: nil) { app in
+        app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(r: 26, g: 26, b: 26) : NSColor(r: 248, g: 248, b: 248)
+    }
     var onFocusChange: ((Bool) -> Void)? = nil
     var onCursorChange: ((Int, Int) -> Void)? = nil
 
@@ -461,11 +476,10 @@ struct EditorTextView: NSViewRepresentable {
         textView.isSelectable = true
         textView.allowsUndo = true
         let editorFont  = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-        let editorColor = NSColor(white: 0.85, alpha: 1)
         textView.font            = editorFont
-        textView.textColor       = editorColor
+        textView.textColor       = themeForeground
         textView.backgroundColor = themeBackground
-        textView.typingAttributes = [.font: editorFont, .foregroundColor: editorColor]
+        textView.typingAttributes = [.font: editorFont, .foregroundColor: themeForeground]
         textView.textContainerInset = NSSize(width: Theme.Spacing.md, height: Theme.Spacing.md)
 
         // Disable smart substitutions — they corrupt code
@@ -505,7 +519,7 @@ struct EditorTextView: NSViewRepresentable {
         if prevParent.fontSize != fontSize {
             let newFont = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
             textView.font = newFont
-            textView.typingAttributes = [.font: newFont, .foregroundColor: NSColor(white: 0.85, alpha: 1)]
+            textView.typingAttributes = [.font: newFont, .foregroundColor: themeForeground]
             context.coordinator.applyHighlighting(to: textView)
             scrollView.verticalRulerView?.needsDisplay = true
         }
