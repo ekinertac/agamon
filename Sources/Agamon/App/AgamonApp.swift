@@ -118,7 +118,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.activate(ignoringOtherApps: true)
-        let bg = NSColor(red: 26/255, green: 26/255, blue: 26/255, alpha: 1)
+        // Dynamic color so the title-bar zone matches the content background
+        // in both light and dark mode without needing an appearance observer.
+        let bg = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(r: 26,  g: 26,  b: 26)
+                : NSColor(r: 248, g: 248, b: 248)
+        }
         NSApp.windows.forEach { $0.backgroundColor = bg }
     }
 

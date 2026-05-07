@@ -11,21 +11,38 @@ enum Theme {
     // MARK: - Color
 
     enum Color {
-        // Base surfaces — darkest to lightest
-        static let background      = SwiftUI.Color(r: 26,  g: 26,  b: 26)   // #1A1A1A  — terminal bg, main window
-        static let surface         = SwiftUI.Color(r: 36,  g: 36,  b: 36)   // #242424  — sidebar, tab bar, panels
-        static let surfaceElevated = SwiftUI.Color(r: 44,  g: 44,  b: 44)   // #2C2C2C  — hover states, raised cards
+        // Returns a SwiftUI Color backed by a dynamic NSColor provider.
+        // The block re-fires whenever macOS appearance changes, so every view using
+        // these tokens automatically re-renders in light and dark mode.
+        private static func adaptive(light: NSColor, dark: NSColor) -> SwiftUI.Color {
+            SwiftUI.Color(NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+            })
+        }
 
-        // Borders — extremely subtle, dark UI doesn't need heavy lines
-        static let border          = SwiftUI.Color.white.opacity(0.07)
-        static let borderFocus     = SwiftUI.Color.white.opacity(0.20)
+        // Base surfaces — light: neutral grays / dark: near-black
+        static let background      = adaptive(light: .init(r: 248, g: 248, b: 248),
+                                               dark:  .init(r: 26,  g: 26,  b: 26))
+        static let surface         = adaptive(light: .init(r: 238, g: 238, b: 238),
+                                               dark:  .init(r: 36,  g: 36,  b: 36))
+        static let surfaceElevated = adaptive(light: .init(r: 226, g: 226, b: 226),
+                                               dark:  .init(r: 44,  g: 44,  b: 44))
+
+        // Borders — inverted opacity source (black in light, white in dark)
+        static let border          = adaptive(light: NSColor.black.withAlphaComponent(0.08),
+                                               dark:  NSColor.white.withAlphaComponent(0.07))
+        static let borderFocus     = adaptive(light: NSColor.black.withAlphaComponent(0.22),
+                                               dark:  NSColor.white.withAlphaComponent(0.20))
 
         // Text hierarchy
-        static let textPrimary     = SwiftUI.Color.white
-        static let textSecondary   = SwiftUI.Color.white.opacity(0.55)
-        static let textTertiary    = SwiftUI.Color.white.opacity(0.28)
+        static let textPrimary     = adaptive(light: .init(r: 26,  g: 26,  b: 26),
+                                               dark:  .init(r: 255, g: 255, b: 255))
+        static let textSecondary   = adaptive(light: NSColor.black.withAlphaComponent(0.55),
+                                               dark:  NSColor.white.withAlphaComponent(0.55))
+        static let textTertiary    = adaptive(light: NSColor.black.withAlphaComponent(0.28),
+                                               dark:  NSColor.white.withAlphaComponent(0.28))
 
-        // Accent — follows the user's System Settings → Appearance → Accent Color selection.
+        // Accent — follows System Settings → Appearance → Accent Color.
         static let accent          = SwiftUI.Color.accentColor
         static let accentMuted     = SwiftUI.Color.accentColor.opacity(0.15)
 
@@ -126,5 +143,10 @@ extension NSColor {
     // Bridge SwiftUI Color → NSColor for AppKit/SwiftTerm use.
     static func fromTheme(_ color: SwiftUI.Color) -> NSColor {
         NSColor(color)
+    }
+
+    // Convenience init from 0-255 RGB integers, mirrors SwiftUI Color.init(r:g:b:).
+    convenience init(r: CGFloat, g: CGFloat, b: CGFloat) {
+        self.init(srgbRed: r / 255, green: g / 255, blue: b / 255, alpha: 1)
     }
 }

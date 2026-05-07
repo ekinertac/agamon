@@ -97,7 +97,6 @@ struct ContentView: View {
         }
         .environment(\.uiFontOffset, appState.uiFontSizeOffset)
         .background(Theme.Color.background)
-        .preferredColorScheme(.dark)
         .focusedSceneValue(\.appState, appState)
         .overlay { ShortcutHandler() }
         .overlay {
