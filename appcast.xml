@@ -9,6 +9,18 @@
     <link>https://github.com/ekinertac/agamon</link>
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
+        <item>
+      <title>Version 0.3.3</title>
+      <pubDate>Fri, 08 May 2026 15:48:32 +0000</pubDate>
+      <sparkle:version>6</sparkle:version>
+      <sparkle:shortVersionString>0.3.3</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure
+        url="https://github.com/ekinertac/agamon/releases/download/v0.3.3/Agamon-v0.3.3.zip"
+        sparkle:edSignature="a+AhBRsCH5K3Um9ozTh08usjHN4kWcpOJSrqeJncibawUvK/JLVmxSH9ac2T+/z4DUOBONloZXmG2WB2Ck82Cg=="
+        length="5183408"
+        type="application/octet-stream" />
+    </item>
     <item>
       <title>Version 0.3.2</title>
       <pubDate>Tue, 05 May 2026 20:50:29 +0000</pubDate>
