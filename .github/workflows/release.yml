@@ -131,8 +131,11 @@ jobs:
           fi
           KEY_FILE="$RUNNER_TEMP/sparkle_key"
           echo "$SPARKLE_PRIVATE_KEY" > "$KEY_FILE"
-          ED_SIG=$("$SIGN_UPDATE" "$ZIPFILE" --ed-key-file "$KEY_FILE")
+          SIG_OUTPUT=$("$SIGN_UPDATE" "$ZIPFILE" --ed-key-file "$KEY_FILE")
           rm "$KEY_FILE"
+          # sign_update outputs: sparkle:edSignature="BASE64" length="SIZE"
+          # Extract just the base64 value for the update_appcast.sh argument.
+          ED_SIG=$(echo "$SIG_OUTPUT" | sed 's/.*edSignature="\([^"]*\)".*/\1/')
           echo "ED_SIG=$ED_SIG" >> "$GITHUB_ENV"
           echo "ZIP_SIZE=$(stat -f%z "$ZIPFILE")" >> "$GITHUB_ENV"
 

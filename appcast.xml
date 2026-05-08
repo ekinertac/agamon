@@ -17,7 +17,7 @@
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
       <enclosure
         url="https://github.com/ekinertac/agamon/releases/download/v0.3.2/Agamon-v0.3.2.zip"
-        sparkle:edSignature="sparkle:edSignature="/rdZCyHXoQ03qkKQgalLvNvG7Nbrh0TwSCv8Vc9JYpLhfWbYb0GCzQD0CbQ0tmPzrrlZ1d4YuNunJZDpt6UmDA==" length="5180208""
+        sparkle:edSignature="/rdZCyHXoQ03qkKQgalLvNvG7Nbrh0TwSCv8Vc9JYpLhfWbYb0GCzQD0CbQ0tmPzrrlZ1d4YuNunJZDpt6UmDA=="
         length="5180208"
         type="application/octet-stream" />
     </item>
